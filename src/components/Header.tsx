@@ -12,7 +12,8 @@ import {
   Settings,
   BellRing,
   BookOpen,
-  BarChart3
+  BarChart3,
+  Sparkles
 } from 'lucide-react';
 import type { DeckItem, PageTab, UserProfile } from '../types';
 
@@ -31,6 +32,7 @@ interface HeaderProps {
   onOpenSettings: () => void;
   onOpenStats: () => void;
   onOpenUserProfile: () => void;
+  onOpenAISettings?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -48,6 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSettings,
   onOpenStats,
   onOpenUserProfile,
+  onOpenAISettings,
 }) => {
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
 
@@ -162,6 +165,17 @@ export const Header: React.FC<HeaderProps> = ({
             <span>{currentUser?.avatarEmoji || '🦉'}</span>
             <span className="max-w-[70px] sm:max-w-[110px] truncate">{currentUser?.nickname || '学习者'}</span>
           </button>
+
+          {onOpenAISettings && (
+            <button
+              onClick={onOpenAISettings}
+              title="AI 智能学术引擎设置 (API Key / 词库清洗 / 长难句分析)"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300/80 rounded-md transition font-medium"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+              <span className="hidden sm:inline">AI配置</span>
+            </button>
+          )}
 
           <button
             onClick={onOpenSettings}

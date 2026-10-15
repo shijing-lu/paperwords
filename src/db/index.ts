@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { DeckItem, WordItem, ArticleItem, UserProfile } from '../types';
+import type { DeckItem, WordItem, ArticleItem, UserProfile, ArticleFolder } from '../types';
 
 export interface CachedDictEntry {
   word: string;
@@ -15,6 +15,7 @@ export class PaperWordsDatabase extends Dexie {
   decks!: Table<DeckItem, string>;
   words!: Table<WordItem, string>;
   articles!: Table<ArticleItem, string>;
+  articleFolders!: Table<ArticleFolder, string>;
   dictionaryCache!: Table<CachedDictEntry, string>;
 
   constructor() {
@@ -52,6 +53,14 @@ export class PaperWordsDatabase extends Dexie {
       await tx.table('articles').toCollection().modify((art: any) => {
         if (!art.userId) art.userId = defaultUserId;
       });
+    });
+    this.version(5).stores({
+      users: 'id, nickname, lastActiveAt',
+      decks: 'id, userId, [userId+createdAt], title',
+      words: 'id, userId, deckId, [userId+deckId], [userId+deckId+listIndex], [userId+deckId+reviewState.status]',
+      articles: 'id, userId, folderId, [userId+folderId], createdAt',
+      articleFolders: 'id, userId, [userId+createdAt], name',
+      dictionaryCache: 'word, updatedAt',
     });
   }
 }

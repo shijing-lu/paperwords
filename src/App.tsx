@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks';
 import confetti from 'canvas-confetti';
 import { db } from './db';
-import type { ViewMode, WordItem, DeckItem, PageTab, ActiveRecallMode, PaperColumns, ArticleItem, WordStudyStats, UserProfile } from './types';
+import type { ViewMode, WordItem, DeckItem, PageTab, ActiveRecallMode, PaperColumns, ArticleItem, WordStudyStats, UserProfile, ArticleFolder } from './types';
 import {
   DEFAULT_DECK_ID,
   KAOYAN_DECK_ID,
@@ -28,8 +28,12 @@ import { HotkeysModal } from './components/HotkeysModal';
 import { SettingsModal } from './components/SettingsModal';
 import { StatsModal } from './components/StatsModal';
 import { UserProfileModal } from './components/UserProfileModal';
+import { AISettingsModal } from './components/AISettingsModal';
 import { SponsorWidget } from './components/SponsorWidget';
 import { ReadingReader } from './components/reading/ReadingReader';
+import { ArticleSidebar } from './components/reading/ArticleSidebar';
+import { CreateArticleModal } from './components/reading/CreateArticleModal';
+import { AIGenerateArticleModal } from './components/reading/AIGenerateArticleModal';
 import { ArticleDrawer } from './components/reading/ArticleDrawer';
 import { ReinforceCardModal } from './components/ReinforceCardModal';
 import { useHotkeys } from './hooks/useHotkeys';
@@ -110,6 +114,13 @@ export const App: React.FC = () => {
   // 倒计时文本
   const [countdownText, setCountdownText] = useState<string | null>(null);
 
+  // AI 与文章目录扩展状态
+  const [isAISettingsOpen, setIsAISettingsOpen] = useState(false);
+  const [aiPromptNotice, setAiPromptNotice] = useState<string>('');
+  const [isCreateArticleOpen, setIsCreateArticleOpen] = useState(false);
+  const [isAIGenerateOpen, setIsAIGenerateOpen] = useState(false);
+  const [targetFolderForAction, setTargetFolderForAction] = useState<string | undefined>(undefined);
+
   // 1. Reactive DB queries - 严格按当前用户的 userId 隔离过滤
   const decks = useLiveQuery(
     () => (currentUser ? db.decks.where({ userId: currentUser.id }).toArray() : []),
@@ -129,14 +140,19 @@ export const App: React.FC = () => {
     [currentUser?.id]
   ) || [];
 
-  // 专属独立空间种子数据初始化 (为每个新访客生成干净、零污染的独立默认词书)
+  const articleFolders = useLiveQuery(
+    () => (currentUser ? db.articleFolders.where({ userId: currentUser.id }).toArray() : []),
+    [currentUser?.id]
+  ) || [];
+
+  // 专属独立空间种子数据初始化 (为每个新访客生成干净、零污染的独立默认词书与目录)
   useEffect(() => {
     if (!currentUser) return;
     const user = currentUser;
     async function initUserSeed() {
       const existingUserDecks = await db.decks.where({ userId: user.id }).toArray();
       if (existingUserDecks.length === 0) {
-        await db.transaction('rw', db.decks, db.words, db.articles, async () => {
+        await db.transaction('rw', db.decks, db.words, db.articles, db.articleFolders, async () => {
           const userDeckId = `kaoyan-${user.id}`;
           const userDeck: DeckItem = {
             ...KAOYAN_DECK,
@@ -154,10 +170,20 @@ export const App: React.FC = () => {
           }));
           await db.words.bulkPut(kaoyanWords);
 
+          const defaultFolderId = `folder-${user.id}-default`;
+          const defaultFolder: ArticleFolder = {
+            id: defaultFolderId,
+            userId: user.id,
+            name: '考研真题·外刊精读',
+            createdAt: Date.now(),
+          };
+          await db.articleFolders.put(defaultFolder);
+
           const userArticles: ArticleItem[] = DEFAULT_ARTICLES.map((art) => ({
             ...art,
             id: `${art.id}-${user.id}`,
             userId: user.id,
+            folderId: defaultFolderId,
           }));
           await db.articles.bulkPut(userArticles);
 
@@ -743,6 +769,18 @@ export const App: React.FC = () => {
     return articles.find((a) => a.id === currentArticleId) || articles[0] || DEFAULT_ARTICLES[0];
   }, [articles, currentArticleId]);
 
+  // 提取供 AI 创作文章使用的“今日重点新词候选”
+  const candidateWordsForAI = useMemo(() => {
+    if (dailySession && dailySession.targetWordIds && dailySession.targetWordIds.length > 0) {
+      const set = new Set(dailySession.targetWordIds);
+      const matched = allWordsInDeck.filter((w) => set.has(w.id));
+      if (matched.length > 0) return matched;
+    }
+    const studiedToday = allWordsInDeck.filter((w) => (w.stats?.todayEncounters || 0) > 0);
+    if (studiedToday.length > 0) return studiedToday;
+    return activeWords.length > 0 ? activeWords : allWordsInDeck.slice(0, 20);
+  }, [dailySession, allWordsInDeck, activeWords]);
+
   // 全局快捷键注册
   useHotkeys({
     wordCount: activeWords.length,
@@ -760,7 +798,7 @@ export const App: React.FC = () => {
     onToggleViewMode: handleToggleViewMode,
     onCycleRecallMode: handleCycleRecallMode,
     onToggleHotkeysModal: () => setIsHotkeysOpen((prev) => !prev),
-    isModalOpen: isImportOpen || isHotkeysOpen || isSettingsOpen || isArticleDrawerOpen || !!reinforceModalData,
+    isModalOpen: isImportOpen || isHotkeysOpen || isSettingsOpen || isArticleDrawerOpen || isAISettingsOpen || isCreateArticleOpen || isAIGenerateOpen || !!reinforceModalData,
   });
 
   return (
@@ -785,6 +823,10 @@ export const App: React.FC = () => {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenStats={() => setIsStatsOpen(true)}
         onOpenUserProfile={() => setIsUserProfileOpen(true)}
+        onOpenAISettings={() => {
+          setAiPromptNotice('');
+          setIsAISettingsOpen(true);
+        }}
       />
 
       {/* 2. Top Bento Dashboard (在单词视图下显示) */}
@@ -806,15 +848,41 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* 3. Main Content: A4 Paper or Reading Mode */}
+      {/* 3. Main Content: A4 Paper or Reading Mode with Left Sidebar Directory */}
       <main className="flex-1">
         {activeTab === 'reading' ? (
-          <ReadingReader
-            article={currentArticle}
-            wordsInDeck={allWordsInDeck}
-            onOpenArticleDrawer={() => setIsArticleDrawerOpen(true)}
-            onAddWordToDeck={handleAddWordFromReading}
-          />
+          <div className="w-full max-w-7xl mx-auto my-5 px-3 sm:px-4 flex flex-col lg:flex-row items-start gap-6">
+            {/* 左侧文章目录系统 */}
+            <ArticleSidebar
+              userId={currentUser?.id || 'guest_default'}
+              folders={articleFolders}
+              articles={articles}
+              currentArticleId={currentArticle.id}
+              onSelectArticle={(id) => setCurrentArticleId(id)}
+              onOpenCreateArticle={(targetFolderId) => {
+                setTargetFolderForAction(targetFolderId);
+                setIsCreateArticleOpen(true);
+              }}
+              onOpenAIGenerate={(targetFolderId) => {
+                setTargetFolderForAction(targetFolderId);
+                setIsAIGenerateOpen(true);
+              }}
+            />
+
+            {/* 中间与右侧精读主阅读器 */}
+            <div className="flex-1 min-w-0 w-full">
+              <ReadingReader
+                article={currentArticle}
+                wordsInDeck={allWordsInDeck}
+                onOpenArticleDrawer={() => setIsArticleDrawerOpen(true)}
+                onAddWordToDeck={handleAddWordFromReading}
+                onOpenAISettings={(notice) => {
+                  setAiPromptNotice(notice || '');
+                  setIsAISettingsOpen(true);
+                }}
+              />
+            </div>
+          </div>
         ) : (
           <A4Paper
             pageTitle={pageTitle}
@@ -855,6 +923,10 @@ export const App: React.FC = () => {
         onImportSuccess={(newDeckId) => {
           setCurrentDeckId(newDeckId);
           handleSelectTab('today');
+        }}
+        onOpenAISettings={() => {
+          setAiPromptNotice('使用 AI 智能整理词汇需配置 API Key');
+          setIsAISettingsOpen(true);
         }}
       />
 
@@ -917,7 +989,43 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* 11. Right Floating Sponsor / Catgirl Tip Widget */}
+      {/* 11. AI Settings Modal (API Key & Base URL 配置) */}
+      <AISettingsModal
+        isOpen={isAISettingsOpen}
+        onClose={() => setIsAISettingsOpen(false)}
+        promptNotice={aiPromptNotice}
+      />
+
+      {/* 12. Create Article Under Folder Modal */}
+      <CreateArticleModal
+        isOpen={isCreateArticleOpen}
+        onClose={() => setIsCreateArticleOpen(false)}
+        userId={currentUser?.id || 'guest_default'}
+        folders={articleFolders}
+        defaultFolderId={targetFolderForAction}
+        onCreated={(newArtId) => {
+          setCurrentArticleId(newArtId);
+        }}
+      />
+
+      {/* 13. AI Generate Article From Today's Words Modal */}
+      <AIGenerateArticleModal
+        isOpen={isAIGenerateOpen}
+        onClose={() => setIsAIGenerateOpen(false)}
+        userId={currentUser?.id || 'guest_default'}
+        folders={articleFolders}
+        defaultFolderId={targetFolderForAction}
+        candidateWords={candidateWordsForAI}
+        onArticleGenerated={(newArtId) => {
+          setCurrentArticleId(newArtId);
+        }}
+        onOpenAISettings={() => {
+          setAiPromptNotice('AI 根据新词编织文章需配置 API Key');
+          setIsAISettingsOpen(true);
+        }}
+      />
+
+      {/* 14. Right Floating Sponsor / Catgirl Tip Widget */}
       <SponsorWidget />
     </div>
   );

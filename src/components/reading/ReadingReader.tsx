@@ -1,18 +1,30 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Sparkles, Volume2, Languages, X, Loader2 } from 'lucide-react';
-import type { ArticleItem, WordItem, ReadingModeType } from '../../types';
+import {
+  BookOpen,
+  Sparkles,
+  Volume2,
+  Languages,
+  X,
+  Loader2,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
+import type { ArticleItem, WordItem, ReadingModeType, SentenceAnalysisResult } from '../../types';
 import { parseArticleToParagraphs, type SentenceChunk, type WordToken } from '../../engine/tokenizer';
 import { speechEngine } from '../../engine/speech';
 import { soundEffects } from '../../engine/soundEffects';
 import { translateSentence } from '../../engine/translator';
+import { aiAnalyzeSentenceSyntax, isAIConfigured } from '../../engine/ai';
 import { WordPopover } from './WordPopover';
 
 interface ReadingReaderProps {
   article: ArticleItem;
   wordsInDeck: WordItem[];
-  onOpenArticleDrawer: () => void;
+  onOpenArticleDrawer?: () => void;
   onAddWordToDeck: (word: string, definition: string, phonetic?: string) => void;
+  onOpenAISettings?: (notice?: string) => void;
 }
 
 export const ReadingReader: React.FC<ReadingReaderProps> = ({
@@ -20,11 +32,18 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
   wordsInDeck,
   onOpenArticleDrawer,
   onAddWordToDeck,
+  onOpenAISettings,
 }) => {
   const [readingMode, setReadingMode] = useState<ReadingModeType>('focus');
   const [activeSentenceIdx, setActiveSentenceIdx] = useState(0);
   const [expandedTranslations, setExpandedTranslations] = useState<Map<number, string>>(new Map());
   const [loadingTranslations, setLoadingTranslations] = useState<Set<number>>(new Set());
+
+  // AI 句子语法分析状态
+  const [sentenceAnalyses, setSentenceAnalyses] = useState<Map<number, SentenceAnalysisResult>>(new Map());
+  const [loadingAnalyses, setLoadingAnalyses] = useState<Set<number>>(new Set());
+  const [analysisErrors, setAnalysisErrors] = useState<Map<number, string>>(new Map());
+
   const [popoverData, setPopoverData] = useState<{
     word: string;
     matchedWordItem?: WordItem;
@@ -99,6 +118,59 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
     }
   };
 
+  // AI 语法长难句深度拆解分析
+  const handleAnalyzeSentence = async (sent: SentenceChunk) => {
+    soundEffects.playKeyTick(720);
+
+    // 检查 AI 配置
+    if (!isAIConfigured()) {
+      onOpenAISettings?.('长难句语法拆解需要配置 AI API Key，请先完成配置');
+      return;
+    }
+
+    // 如果已经分析过了，则不需要重复请求
+    if (sentenceAnalyses.has(sent.index)) {
+      return;
+    }
+
+    setLoadingAnalyses((prev) => new Set(prev).add(sent.index));
+    setAnalysisErrors((prev) => {
+      const next = new Map(prev);
+      next.delete(sent.index);
+      return next;
+    });
+
+    try {
+      const result = await aiAnalyzeSentenceSyntax(sent.text, article.content);
+      setSentenceAnalyses((prev) => {
+        const next = new Map(prev);
+        next.set(sent.index, result);
+        return next;
+      });
+
+      // 如果翻译卡片还没有打开，则顺带把它置为展开
+      if (!expandedTranslations.has(sent.index)) {
+        setExpandedTranslations((prev) => {
+          const next = new Map(prev);
+          next.set(sent.index, result.summaryTranslation || 'AI 语法分析已完成');
+          return next;
+        });
+      }
+    } catch (err: any) {
+      setAnalysisErrors((prev) => {
+        const next = new Map(prev);
+        next.set(sent.index, err.message || 'AI 语法分析失败');
+        return next;
+      });
+    } finally {
+      setLoadingAnalyses((prev) => {
+        const next = new Set(prev);
+        next.delete(sent.index);
+        return next;
+      });
+    }
+  };
+
   // Keyboard navigation for reading mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -155,7 +227,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
   return (
     <div
       onClick={() => setPopoverData(null)}
-      className="w-full max-w-6xl mx-auto my-5 px-3 sm:px-4"
+      className="w-full mx-auto"
     >
       {/* Editorial Reader Outer Shell */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
@@ -164,13 +236,17 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
           {/* Article Header */}
           <div className="pb-5 border-b border-stone-200">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-              <button
-                onClick={onOpenArticleDrawer}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded text-xs font-medium transition"
-              >
-                <BookOpen className="w-3.5 h-3.5 text-amber-700" />
-                <span>切换篇章 / 导入文章</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {onOpenArticleDrawer && (
+                  <button
+                    onClick={onOpenArticleDrawer}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-medium transition"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-amber-700" />
+                    <span>全部篇章</span>
+                  </button>
+                )}
+              </div>
 
               {/* Reading Sub-mode Switcher */}
               <div className="flex items-center gap-1 bg-stone-100 p-0.5 rounded-lg border border-stone-200 text-xs">
@@ -219,12 +295,12 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
               <span className="font-mono">{article.totalWords} 词</span>
               <span>•</span>
               <span className="text-amber-800 font-medium">
-                包含 {totalTargetHits} 处考研核心词
+                包含 {totalTargetHits} 处重点生词
               </span>
               <span>•</span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200/70 text-amber-900 text-[11px] font-sans font-medium">
                 <Languages className="w-3 h-3 text-amber-700" />
-                双击任意句子显译文
+                双击任意句子显译文，右上角点“AI分析”可长难句语法拆解
               </span>
             </div>
           </div>
@@ -239,6 +315,9 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
                     const isDimmed = readingMode === 'focus' && sent.index !== activeSentenceIdx;
                     const isTranslated = expandedTranslations.has(sent.index);
                     const isLoading = loadingTranslations.has(sent.index);
+                    const isAnalyzing = loadingAnalyses.has(sent.index);
+                    const analysis = sentenceAnalyses.get(sent.index);
+                    const analysisError = analysisErrors.get(sent.index);
 
                     return (
                       <React.Fragment key={sent.index}>
@@ -251,7 +330,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
                             e.stopPropagation();
                             toggleSentenceTranslation(sent);
                           }}
-                          title="单击高亮聚焦，双击展开/折叠本句翻译 (快捷键 T)"
+                          title="单击高亮聚焦，双击展开译文与AI语法分析 (快捷键 T)"
                           className={`transition-all duration-200 cursor-pointer rounded px-1 -mx-0.5 select-text ${
                             isFocused
                               ? 'bg-amber-100/75 text-stone-950 shadow-2xs ring-1 ring-amber-300'
@@ -300,7 +379,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
                           {' '}
                         </span>
 
-                        {/* Inline Sentence Translation Callout */}
+                        {/* Inline Sentence Translation & AI Syntax Breakdown Callout */}
                         <AnimatePresence>
                           {(isTranslated || isLoading) && (
                             <motion.div
@@ -308,38 +387,60 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
                               animate={{ opacity: 1, height: 'auto', y: 0 }}
                               exit={{ opacity: 0, height: 0, y: -4 }}
                               transition={{ duration: 0.2 }}
-                              className="overflow-hidden my-2.5"
+                              className="overflow-hidden my-3"
                             >
-                              <div className="p-3 sm:p-3.5 rounded-lg bg-[#FAF6EE] border-l-3 border-amber-600 border-t border-r border-b border-amber-200/70 shadow-2xs text-stone-800 font-sans">
-                                <div className="flex items-center justify-between text-xs text-amber-800 font-medium mb-1.5 pb-1 border-b border-amber-200/40">
+                              <div className="p-3.5 sm:p-4 rounded-xl bg-[#FAF6EE] border-l-4 border-amber-700 border-t border-r border-b border-amber-200/80 shadow-xs text-stone-800 font-sans">
+                                {/* Header with AI Analyze Button placed to the left of Speech */}
+                                <div className="flex items-center justify-between text-xs text-amber-800 font-medium mb-2 pb-1.5 border-b border-amber-200/50">
                                   <div className="flex items-center gap-1.5">
                                     <Languages className="w-3.5 h-3.5 text-amber-700" />
                                     <span className="font-serif-academic font-bold tracking-wide">
-                                      真题精读·语境译文
+                                      精读译文·长难句剖析
                                     </span>
                                     <span className="text-[10px] text-amber-700/70 font-mono">
                                       #句 {sent.index + 1}
                                     </span>
                                   </div>
-                                  <div className="flex items-center gap-1">
+
+                                  {/* Action Buttons: AI Analyze is to the LEFT of Volume2 */}
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleAnalyzeSentence(sent);
+                                      }}
+                                      disabled={isAnalyzing}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-200/80 hover:bg-amber-300 text-amber-950 text-[11px] font-bold shadow-2xs transition disabled:opacity-50"
+                                      title="AI 深度剖析当前长难句主谓宾与语法结构"
+                                    >
+                                      {isAnalyzing ? (
+                                        <Loader2 className="w-3 h-3 animate-spin text-amber-900" />
+                                      ) : (
+                                        <Sparkles className="w-3 h-3 text-amber-800" />
+                                      )}
+                                      <span>{isAnalyzing ? '分析中...' : 'AI分析'}</span>
+                                    </button>
+
                                     <button
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         speechEngine.speak(sent.text);
                                       }}
-                                      className="p-1 hover:bg-amber-100/80 rounded text-stone-600 hover:text-stone-900 transition"
+                                      className="p-1 hover:bg-amber-100 rounded text-stone-600 hover:text-stone-900 transition"
                                       title="朗读本句原英文"
                                     >
                                       <Volume2 className="w-3.5 h-3.5" />
                                     </button>
+
                                     <button
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         toggleSentenceTranslation(sent);
                                       }}
-                                      className="p-1 hover:bg-amber-100/80 rounded text-stone-500 hover:text-stone-900 transition"
+                                      className="p-1 hover:bg-amber-100 rounded text-stone-500 hover:text-stone-900 transition"
                                       title="收起译文"
                                     >
                                       <X className="w-3.5 h-3.5" />
@@ -347,6 +448,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
                                   </div>
                                 </div>
 
+                                {/* Translation Text */}
                                 {isLoading ? (
                                   <div className="flex items-center gap-2 py-1 text-stone-500 text-xs">
                                     <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-700" />
@@ -356,6 +458,83 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
                                   <div className="text-[14px] sm:text-[15px] text-stone-900 leading-relaxed font-serif-academic font-medium pt-0.5">
                                     {expandedTranslations.get(sent.index)}
                                   </div>
+                                )}
+
+                                {/* AI Syntax Analysis Error */}
+                                {analysisError && (
+                                  <div className="mt-2 p-2 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+                                    {analysisError}
+                                  </div>
+                                )}
+
+                                {/* AI Syntax Analysis Result Panel */}
+                                {analysis && (
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 4 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="mt-3 pt-3 border-t border-amber-200/70 text-xs space-y-2.5"
+                                  >
+                                    <div className="flex items-center gap-1.5 text-amber-900 font-bold">
+                                      <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                                      <span>长难句语法透视与骨架拆解</span>
+                                    </div>
+
+                                    {/* 1. Main Clause / Sentence Spine */}
+                                    <div className="p-2.5 rounded-lg bg-white/90 border border-amber-200 shadow-2xs">
+                                      <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-1">
+                                        核心主干 (Sentence Spine)
+                                      </div>
+                                      <div className="font-mono text-xs font-semibold text-stone-900 leading-relaxed">
+                                        {analysis.mainClause}
+                                      </div>
+                                    </div>
+
+                                    {/* 2. Grammar Breakdown */}
+                                    {analysis.grammarBreakdown && analysis.grammarBreakdown.length > 0 && (
+                                      <div className="space-y-1.5">
+                                        <div className="text-[11px] font-bold text-stone-700">
+                                          成分结构细剖:
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-1.5">
+                                          {analysis.grammarBreakdown.map((item, bIdx) => (
+                                            <div
+                                              key={bIdx}
+                                              className="p-2 rounded bg-stone-50 border border-stone-200 text-stone-800"
+                                            >
+                                              <div className="flex items-center gap-2">
+                                                <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-bold">
+                                                  {item.role}
+                                                </span>
+                                                <span className="font-serif-academic italic text-[11px] text-stone-700 truncate">
+                                                  "{item.part}"
+                                                </span>
+                                              </div>
+                                              <div className="text-[11px] text-stone-600 mt-1 pl-0.5">
+                                                {item.explanation}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* 3. Core Points / Clauses */}
+                                    {analysis.corePoints && analysis.corePoints.length > 0 && (
+                                      <div className="pt-1.5 flex flex-wrap gap-1.5">
+                                        <span className="text-[11px] text-amber-900 font-bold self-center">
+                                          语法考点:
+                                        </span>
+                                        {analysis.corePoints.map((pt, pIdx) => (
+                                          <span
+                                            key={pIdx}
+                                            className="px-2 py-0.5 rounded-full bg-amber-100/70 text-amber-950 text-[11px] font-sans border border-amber-200"
+                                          >
+                                            {pt}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </motion.div>
                                 )}
                               </div>
                             </motion.div>
@@ -372,10 +551,11 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
           {/* Reader Footer */}
           <div className="mt-10 pt-4 border-t border-stone-200 flex flex-wrap items-center justify-between text-xs text-stone-500 gap-2">
             <span>
-              双击任意句子 或 按 <kbd className="px-1 py-0.5 bg-stone-200 rounded font-mono">T</kbd> 查看翻译，
+              双击任意句子显译文并可点击 <strong className="text-amber-800">AI分析</strong> 拆解长难句语法，
+              按 <kbd className="px-1 py-0.5 bg-stone-200 rounded font-mono">T</kbd> 翻译，
               按 <kbd className="px-1 py-0.5 bg-stone-200 rounded font-mono">J</kbd> /{' '}
               <kbd className="px-1 py-0.5 bg-stone-200 rounded font-mono">K</kbd> 逐句聚焦，
-              按 <kbd className="px-1 py-0.5 bg-stone-200 rounded font-mono">P</kbd> 整句朗读，
+              按 <kbd className="px-1 py-0.5 bg-stone-200 rounded font-mono">P</kbd> 朗读，
               按 <kbd className="px-1 py-0.5 bg-stone-200 rounded font-mono">Tab</kbd> 切换模式
             </span>
             <span className="font-mono text-[11px] text-stone-400">
@@ -391,7 +571,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
               <Sparkles className="w-4 h-4 text-amber-700" />
               <span>本文重点词 ({articleVocabList.length})</span>
             </div>
-            <span className="text-[10px] text-stone-400">点击查义</span>
+            <span className="text-[10px] text-stone-400">点击发音</span>
           </div>
 
           <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1 text-xs">
@@ -417,6 +597,12 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
                 </div>
               </div>
             ))}
+
+            {articleVocabList.length === 0 && (
+              <div className="text-center py-6 text-stone-400 text-xs">
+                本篇暂无匹配的当前词单生词
+              </div>
+            )}
           </div>
         </aside>
       </div>

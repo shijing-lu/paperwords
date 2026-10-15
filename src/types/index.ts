@@ -100,9 +100,17 @@ export type PaperColumns = 2 | 3 | 4;
 
 export type ReadingModeType = 'immersive' | 'focus' | 'cloze';
 
+export interface ArticleFolder {
+  id: string;
+  userId: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface ArticleItem {
   id: string;
   userId: string;          // 归属租户/学习者 ID
+  folderId?: string;       // 归属目录/分类 ID
   title: string;
   content: string;
   source?: string;
@@ -113,6 +121,26 @@ export interface ArticleItem {
   updatedAt: number;
 }
 
+export interface AIConfig {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  temperature?: number;
+}
+
+export interface SentenceAnalysisResult {
+  sentence: string;
+  mainClause: string;
+  grammarBreakdown: {
+    part: string;
+    role: string;
+    explanation: string;
+  }[];
+  clauses?: string[];
+  corePoints?: string[];
+  summaryTranslation: string;
+}
+
 export interface StudySessionStats {
   deckId: string;
   listIndex: number;
@@ -121,3 +149,4 @@ export interface StudySessionStats {
   fuzzy: number;
   unknown: number;
 }
+
