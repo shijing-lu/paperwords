@@ -18,42 +18,7 @@ export interface ParagraphBlock {
   sentences: SentenceChunk[];
 }
 
-// 快速词根还原器 (去除常见单复数与时态后缀)
-function getBaseForms(word: string): string[] {
-  const lower = word.toLowerCase();
-  const forms = [lower];
-
-  // s / es 复数
-  if (lower.endsWith('ies') && lower.length > 4) {
-    forms.push(lower.slice(0, -3) + 'y');
-  } else if (lower.endsWith('es') && lower.length > 3) {
-    forms.push(lower.slice(0, -2));
-    forms.push(lower.slice(0, -1));
-  } else if (lower.endsWith('s') && lower.length > 2) {
-    forms.push(lower.slice(0, -1));
-  }
-
-  // ed 过去式
-  if (lower.endsWith('ied') && lower.length > 4) {
-    forms.push(lower.slice(0, -3) + 'y');
-  } else if (lower.endsWith('ed') && lower.length > 3) {
-    forms.push(lower.slice(0, -2));
-    forms.push(lower.slice(0, -1)); // 如 created -> create
-  }
-
-  // ing 进行时
-  if (lower.endsWith('ing') && lower.length > 4) {
-    forms.push(lower.slice(0, -3));
-    forms.push(lower.slice(0, -3) + 'e'); // 如 innovating -> innovate
-  }
-
-  // ly 副词
-  if (lower.endsWith('ly') && lower.length > 3) {
-    forms.push(lower.slice(0, -2));
-  }
-
-  return forms;
-}
+import { getLemmatizedCandidates } from './lemmatizer';
 
 export function parseArticleToParagraphs(
   content: string,
@@ -85,7 +50,7 @@ export function parseArticleToParagraphs(
           };
         }
 
-        const candidates = getBaseForms(tokenStr);
+        const candidates = getLemmatizedCandidates(tokenStr);
         let matched: WordItem | undefined;
         for (const cand of candidates) {
           if (wordMap.has(cand)) {
