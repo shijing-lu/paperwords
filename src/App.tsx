@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks';
 import confetti from 'canvas-confetti';
 import { db } from './db';
-import type { ViewMode, WordItem, PageTab, ActiveRecallMode, PaperColumns, ArticleItem } from './types';
+import type { ViewMode, WordItem, PageTab, ActiveRecallMode, PaperColumns, ArticleItem, WordStudyStats } from './types';
 import {
   DEFAULT_DECK_ID,
   KAOYAN_DECK_ID,
@@ -18,12 +18,14 @@ import { speechEngine } from './engine/speech';
 import { notificationEngine } from './engine/notifications';
 import { soundEffects } from './engine/soundEffects';
 import { sessionManager, type DailyLearningSession } from './engine/sessionManager';
+import { recordWordEncounter } from './engine/heatmap';
 import { Header } from './components/Header';
 import { BentoDashboard } from './components/BentoDashboard';
 import { A4Paper } from './components/paper/A4Paper';
 import { ImportModal } from './components/ImportModal';
 import { HotkeysModal } from './components/HotkeysModal';
 import { SettingsModal } from './components/SettingsModal';
+import { StatsModal } from './components/StatsModal';
 import { ReadingReader } from './components/reading/ReadingReader';
 import { ArticleDrawer } from './components/reading/ArticleDrawer';
 import { ReinforceCardModal } from './components/ReinforceCardModal';
@@ -82,6 +84,7 @@ export const App: React.FC = () => {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isHotkeysOpen, setIsHotkeysOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [isArticleDrawerOpen, setIsArticleDrawerOpen] = useState(false);
   const [reinforceModalData, setReinforceModalData] = useState<{
     word: WordItem;
@@ -400,6 +403,17 @@ export const App: React.FC = () => {
   // 核心打标落地执行（更新数据库、清理揭示状态、维护焦点与多轮递进）
   const executeRatingCommit = useCallback(
     async (wordId: string, rating: 1 | 2 | 3) => {
+      // 记录该单词的累计学习次数与今日过筛热度
+      const targetWord = allWordsInDeck.find((w) => w.id === wordId);
+      if (targetWord) {
+        const updatedStats = recordWordEncounter(
+          targetWord.stats,
+          rating,
+          activeTab === 'today' ? 'today' : activeTab === 'review' ? 'review' : 'other'
+        );
+        await db.words.update(wordId, { stats: updatedStats });
+      }
+
       // 1. 如果是在今日新学中，且会话处于进行中：走多轮递进淘汰引擎
       if (activeTab === 'today' && dailySession && !dailySession.isGraduated) {
         const { updatedSession, roundFinished, allGraduated } = sessionManager.recordWordRating(
@@ -737,6 +751,7 @@ export const App: React.FC = () => {
         onOpenImport={() => setIsImportOpen(true)}
         onOpenHotkeys={() => setIsHotkeysOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenStats={() => setIsStatsOpen(true)}
       />
 
       {/* 2. Top Bento Dashboard (在单词视图下显示) */}
@@ -835,7 +850,14 @@ export const App: React.FC = () => {
         onUpdateNotificationThreshold={handleUpdateNotificationThreshold}
       />
 
-      {/* 7. Article Drawer (精读文章书架与导入) */}
+      {/* 7. Study Stats Modal (今日统计与重点攻坚记忆看板) */}
+      <StatsModal
+        isOpen={isStatsOpen}
+        onClose={() => setIsStatsOpen(false)}
+        words={allWordsInDeck}
+      />
+
+      {/* 8. Article Drawer (精读文章书架与导入) */}
       <ArticleDrawer
         isOpen={isArticleDrawerOpen}
         onClose={() => setIsArticleDrawerOpen(false)}
@@ -844,7 +866,7 @@ export const App: React.FC = () => {
         onSelectArticle={(id) => setCurrentArticleId(id)}
       />
 
-      {/* 8. Reinforce Card Modal (模糊/生疏词即刻强化弹窗，按任意键继续) */}
+      {/* 9. Reinforce Card Modal (模糊/生疏词即刻强化弹窗，按任意键继续) */}
       <ReinforceCardModal
         data={reinforceModalData}
         onDismiss={handleDismissReinforce}

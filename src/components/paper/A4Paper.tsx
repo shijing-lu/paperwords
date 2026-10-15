@@ -13,7 +13,7 @@ import {
   RotateCcw,
   AlertCircle,
 } from 'lucide-react';
-import type { WordItem, ViewMode, ActiveRecallMode, PaperColumns } from '../../types';
+import type { WordItem, ViewMode, ActiveRecallMode, PaperColumns, WordStudyStats } from '../../types';
 import { WordRow } from './WordRow';
 
 export interface SessionProgressInfo {

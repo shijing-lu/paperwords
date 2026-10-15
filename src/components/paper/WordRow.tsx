@@ -1,9 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Volume2, CheckCircle2, HelpCircle, XCircle } from 'lucide-react';
-import type { WordItem, ViewMode, ActiveRecallMode } from '../../types';
+import type { WordItem, ViewMode, ActiveRecallMode, WordStudyStats } from '../../types';
 import { speechEngine } from '../../engine/speech';
 import { soundEffects } from '../../engine/soundEffects';
+import { getWordDisplayEncounters, getWordHeatmapStyle } from '../../engine/heatmap';
 
 interface WordRowProps {
   word: WordItem;
@@ -33,6 +34,9 @@ export const WordRow: React.FC<WordRowProps> = ({
   // 核心逻辑：只有在 viewMode 为 mask/speed 且当前未刮开时才应用遮罩
   const isMaskActive = (viewMode === 'mask' || viewMode === 'speed') && !isRevealed;
   const rowRef = React.useRef<HTMLDivElement>(null);
+
+  const encounters = getWordDisplayEncounters(word);
+  const heatmap = getWordHeatmapStyle(encounters);
 
   React.useEffect(() => {
     if (isActive && rowRef.current) {
@@ -97,7 +101,9 @@ export const WordRow: React.FC<WordRowProps> = ({
       onClick={() => onSelect(index)}
       className={`relative group px-2.5 py-1.5 rounded-md transition-all cursor-pointer select-none text-xs border ${
         isActive
-          ? 'border-amber-300/80 bg-amber-50/70 shadow-[0_2px_8px_rgba(217,119,6,0.08)]'
+          ? 'border-amber-400 bg-amber-100/90 shadow-[0_2px_8px_rgba(217,119,6,0.12)] ring-1 ring-amber-400'
+          : heatmap.encounters > 0
+          ? `${heatmap.bgClass} ${heatmap.borderClass} hover:brightness-95`
           : 'border-transparent hover:border-stone-200 hover:bg-stone-100/50'
       }`}
     >
@@ -156,6 +162,15 @@ export const WordRow: React.FC<WordRowProps> = ({
 
         {/* Right: Audio button & Status Pill */}
         <div className="flex items-center gap-1 shrink-0">
+          {/* 学习次数与记忆重点视觉徽章 */}
+          {heatmap.encounters > 0 && (
+            <span
+              className={`inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.2 rounded font-mono-code transition-all ${heatmap.badgeClass}`}
+              title={`已过筛学习 ${heatmap.encounters} 次${heatmap.isHardcore ? ' · 重点攻坚记忆！' : ''}`}
+            >
+              {heatmap.badgeText}
+            </span>
+          )}
           {getStatusBadge()}
           <button
             onClick={handlePronounce}
@@ -189,35 +204,45 @@ export const WordRow: React.FC<WordRowProps> = ({
           )}
         </div>
 
-        {/* Quick inline rating buttons when active */}
-        {isActive && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-1 pl-1 shrink-0 animate-in fade-in duration-100"
+        {/* Quick inline rating buttons - 所有卡片默认直接展示，点击一遍即可快速过滤出队 */}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-1 pl-1 shrink-0"
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRateAction(1);
+            }}
+            title="熟练 (直接点击过滤出队，无需先选卡片)"
+            className="text-[10px] px-1.5 py-0.5 bg-emerald-100/90 hover:bg-emerald-200 text-emerald-800 border border-emerald-300/80 rounded font-bold transition cursor-pointer active:scale-95 shadow-2xs"
           >
-            <button
-              onClick={() => handleRateAction(1)}
-              title="熟练 (点击直接通过免弹窗 / 键盘按 1 弹窗核对)"
-              className="text-[10px] px-1 py-0.5 bg-emerald-100/80 hover:bg-emerald-200 text-emerald-800 rounded font-medium transition"
-            >
-              1 熟
-            </button>
-            <button
-              onClick={() => handleRateAction(2)}
-              title="模糊 (点击或键盘按 2 弹窗强化)"
-              className="text-[10px] px-1 py-0.5 bg-amber-100/80 hover:bg-amber-200 text-amber-800 rounded font-medium transition"
-            >
-              2 糊
-            </button>
-            <button
-              onClick={() => handleRateAction(3)}
-              title="生疏 (点击或键盘按 3 弹窗攻坚)"
-              className="text-[10px] px-1 py-0.5 bg-rose-100/80 hover:bg-rose-200 text-rose-800 rounded font-medium transition"
-            >
-              3 生
-            </button>
-          </div>
-        )}
+            1 熟
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRateAction(2);
+            }}
+            title="模糊 (点击标记为模糊)"
+            className="text-[10px] px-1.5 py-0.5 bg-amber-100/90 hover:bg-amber-200 text-amber-800 border border-amber-300/80 rounded font-bold transition cursor-pointer active:scale-95 shadow-2xs"
+          >
+            2 糊
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRateAction(3);
+            }}
+            title="生疏 (点击标记为生疏)"
+            className="text-[10px] px-1.5 py-0.5 bg-rose-100/90 hover:bg-rose-200 text-rose-800 border border-rose-300/80 rounded font-bold transition cursor-pointer active:scale-95 shadow-2xs"
+          >
+            3 生
+          </button>
+        </div>
       </div>
 
       {/* 真题挖空模式 C 展示 */}

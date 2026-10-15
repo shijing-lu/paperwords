@@ -26,6 +26,20 @@ export interface EtymologyData {
   source?: 'preset' | 'rule' | 'ai';
 }
 
+export interface WordStudyLog {
+  timestamp: number;
+  rating: 1 | 2 | 3;
+  sessionType: 'today' | 'review' | 'other';
+}
+
+export interface WordStudyStats {
+  totalEncounters: number;    // 历史累计学习/打标总次数
+  todayEncounters: number;    // 今日学习/打标次数
+  lastStudiedDate: number;    // 最近一次打标时间戳
+  firstStudiedDate?: number;  // 首次学习时间戳
+  studyHistory?: WordStudyLog[];
+}
+
 export interface WordItem {
   id: string;              // 唯一 UUID
   deckId: string;          // 关联词书 ID
@@ -38,6 +52,7 @@ export interface WordItem {
   examples?: string[];     // 例句
   tags?: string[];         // 标签分类
   etymology?: EtymologyData; // 词根词缀助记
+  stats?: WordStudyStats;    // 学习次数与统计数据
   reviewState: ReviewState;
 }
 

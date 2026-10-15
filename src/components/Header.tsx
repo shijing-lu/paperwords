@@ -11,7 +11,8 @@ import {
   Layers,
   Settings,
   BellRing,
-  BookOpen
+  BookOpen,
+  BarChart3
 } from 'lucide-react';
 import type { DeckItem, PageTab } from '../types';
 
@@ -27,6 +28,7 @@ interface HeaderProps {
   onOpenImport: () => void;
   onOpenHotkeys: () => void;
   onOpenSettings: () => void;
+  onOpenStats: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -41,6 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenImport,
   onOpenHotkeys,
   onOpenSettings,
+  onOpenStats,
 }) => {
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
 
@@ -137,6 +140,15 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
           )}
+
+          <button
+            onClick={onOpenStats}
+            title="今日学习与记忆热度统计"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 border border-stone-200 rounded-md transition font-medium"
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-amber-700" />
+            <span className="hidden sm:inline">今日统计</span>
+          </button>
 
           <button
             onClick={onOpenSettings}
