@@ -1,0 +1,23 @@
+[
+  {
+    "word": "serendipity",
+    "phonetic": "/ˌserənˈdɪpəti/",
+    "pos": "n.",
+    "definition": "意外发现珍奇事物的本领，机缘巧合",
+    "examples": ["Finding this cozy bookshop was pure serendipity."]
+  },
+  {
+    "word": "solitude",
+    "phonetic": "/ˈsɒlətjuːd/",
+    "pos": "n.",
+    "definition": "独处，清静",
+    "examples": ["He enjoyed the peace and solitude of the mountains."]
+  },
+  {
+    "word": "resilience",
+    "phonetic": "/rɪˈzɪliəns/",
+    "pos": "n.",
+    "definition": "韧性，复原力",
+    "examples": ["The company showed remarkable resilience during the crisis."]
+  }
+]

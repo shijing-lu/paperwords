@@ -1,0 +1,6 @@
+# 欧路词典生词本导出示例
+altruism	/ˈæltruɪzəm/	利他主义，无私
+benevolent	/bəˈnevələnt/	仁慈的，乐善好施的
+catalyst	/ˈkætəlɪst/	催化剂；促成变化的人或事物
+cognizant	/ˈkɒɡnɪzənt/	知晓的，意识到的
+diligent	/ˈdɪlɪdʒənt/	勤勉的，刻苦的
