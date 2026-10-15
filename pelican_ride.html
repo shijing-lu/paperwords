@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>鹈鹕骑自行车 · 60FPS 实时动画破风漫游</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Playfair+Display:ital,wght@0,700;1,400&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .font-serif-title {
+      font-family: 'Playfair Display', Georgia, serif;
+    }
+    canvas {
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
+    }
+  </style>
+</head>
+<body class="bg-[#F6F4EE] text-stone-800 min-h-screen flex flex-col items-center justify-between p-3 sm:p-6">
+
+  <!-- Top Header Bar -->
+  <header class="w-full max-w-5xl flex items-center justify-between pb-3 border-b border-stone-300">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center text-xl shadow-sm">
+        🚴
+      </div>
+      <div>
+        <h1 class="font-serif-title text-xl sm:text-2xl font-black text-stone-900 tracking-tight leading-none">
+          Barnaby On The Wheels
+        </h1>
+        <p class="text-[11px] text-amber-800 font-mono font-medium tracking-wide mt-1">
+          真实会蹬车的鹈鹕 · 60FPS 实时反解骨骼动力学
+        </p>
+      </div>
+    </div>
+
+    <!-- Quick Audio & Actions -->
+    <div class="flex items-center gap-2">
+      <button id="btnBell" class="px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200 active:scale-95 text-amber-900 border border-amber-300 rounded-full text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+        <span>🔔</span>
+        <span>按车铃 (按键 B)</span>
+      </button>
+      <button id="btnSound" class="px-3 py-1.5 bg-stone-200/80 hover:bg-stone-300 text-stone-700 rounded-full text-xs font-medium transition flex items-center gap-1">
+        <span id="soundIcon">🔊</span>
+        <span id="soundText">音效: 开</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Showcase Container -->
+  <main class="w-full max-w-5xl my-4 flex flex-col items-center">
+    
+    <!-- Viewport Switcher Tabs (动画版 vs 静态插画版) -->
+    <div class="w-full flex items-center justify-between mb-2 px-1">
+      <div class="flex items-center gap-1 bg-stone-200/80 p-1 rounded-xl text-xs font-semibold text-stone-700">
+        <button id="tabLive" class="px-3 py-1 rounded-lg bg-white text-stone-950 shadow-xs font-bold transition flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>🚴 60FPS 实时蹬车动画</span>
+        </button>
+        <button id="tabPoster" class="px-3 py-1 rounded-lg hover:text-stone-900 transition flex items-center gap-1.5">
+          <span>🖼 4K 艺术海报画作</span>
+        </button>
+      </div>
+
+      <div class="hidden sm:flex items-center gap-2 text-xs font-mono text-stone-500">
+        <span>按住 <kbd class="px-1.5 py-0.5 bg-stone-300/80 text-stone-800 rounded font-bold">Space</kbd> 疯狂蹬车加速</span>
+      </div>
+    </div>
+
+    <!-- Live Animation Viewport -->
+    <div id="liveView" class="relative w-full rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border-4 border-white bg-sky-200 aspect-[16/9] max-h-[580px]">
+      <canvas id="gameCanvas" class="w-full h-full block cursor-pointer"></canvas>
+
+      <!-- HUD Speedometer Badge -->
+      <div class="absolute top-4 left-4 bg-stone-900/80 backdrop-blur-md text-white px-4 py-2 rounded-2xl border border-white/20 shadow-md flex items-center gap-3">
+        <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></div>
+        <div>
+          <div class="text-[10px] text-stone-300 font-mono uppercase font-bold tracking-wider">SPEED (车速)</div>
+          <div class="flex items-baseline gap-1">
+            <span id="hudSpeed" class="font-mono text-2xl font-black text-amber-300">24</span>
+            <span class="text-xs font-bold text-white/80">KM/H</span>
+          </div>
+        </div>
+        <div class="h-6 w-px bg-white/20"></div>
+        <div>
+          <div class="text-[10px] text-stone-300 font-mono uppercase font-bold tracking-wider">CADENCE (踏频)</div>
+          <div class="font-mono text-xs font-bold text-emerald-300"><span id="hudCadence">82</span> RPM</div>
+        </div>
+      </div>
+
+      <!-- Time of Day Pill -->
+      <div class="absolute top-4 right-4 flex items-center gap-1 bg-black/50 backdrop-blur-md p-1 rounded-xl border border-white/20 text-xs text-white">
+        <button data-tod="sunset" class="tod-btn px-2.5 py-1 rounded-lg bg-amber-500 font-bold transition">🌅 落日</button>
+        <button data-tod="day" class="tod-btn px-2.5 py-1 rounded-lg hover:bg-white/20 transition">☀️ 白昼</button>
+        <button data-tod="night" class="tod-btn px-2.5 py-1 rounded-lg hover:bg-white/20 transition">🌙 暮夜</button>
+      </div>
+
+      <!-- Sprint Turbo Banner -->
+      <div id="turboBanner" class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-amber-500/90 backdrop-blur-md text-white px-4 py-1.5 rounded-full border border-amber-300 shadow-xl text-xs font-bold opacity-0 transition-opacity duration-200 pointer-events-none flex items-center gap-1.5">
+        <span>⚡</span>
+        <span>极速冲刺模式！鹈鹕正在疯狂蹬腿！</span>
+      </div>
+
+      <!-- Bell Toast -->
+      <div id="bellToast" class="absolute top-20 left-1/2 -translate-x-1/2 bg-amber-500 text-white font-bold px-4 py-1.5 rounded-full shadow-lg text-sm opacity-0 transition-all duration-200 pointer-events-none scale-75">
+        🔔 叮铃铃~ 叮铃铃~！
+      </div>
+    </div>
+
+    <!-- Static 4K Poster Viewport (Hidden by default, toggleable via tab) -->
+    <div id="posterView" class="hidden relative w-full rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border-4 border-white bg-stone-900 aspect-[16/9] max-h-[580px]">
+      <img src="./pelican_bicycle.jpg" alt="Pelican Poster" class="w-full h-full object-cover" />
+      <div class="absolute bottom-4 left-4 bg-stone-900/80 backdrop-blur-md text-white px-3.5 py-1.5 rounded-xl text-xs font-mono border border-white/20">
+        🎨 4K Studio Ghibli 风格艺术原画
+      </div>
+    </div>
+
+    <!-- Interactive Dashboards below canvas -->
+    <div class="w-full grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+      
+      <!-- Big Sprint Accelerator Button -->
+      <button
+        id="btnSprint"
+        class="sm:col-span-1 py-3.5 px-4 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-extrabold rounded-2xl shadow-md transition flex items-center justify-center gap-2 text-sm select-none active:scale-95"
+      >
+        <span class="text-xl">⚡</span>
+        <span>按住或空格：疯狂蹬车冲刺！</span>
+      </button>
+
+      <!-- Whimsical Actions -->
+      <div class="sm:col-span-2 bg-white/90 backdrop-blur-md p-3.5 rounded-2xl border border-stone-200 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-stone-700">鹈鹕互动：</span>
+          <button id="btnFlap" class="px-3 py-1.5 bg-stone-100 hover:bg-amber-100 text-stone-800 rounded-lg font-semibold border border-stone-200 transition">
+            🪽 扇翅膀借风
+          </button>
+          <button id="btnFish" class="px-3 py-1.5 bg-stone-100 hover:bg-amber-100 text-stone-800 rounded-lg font-semibold border border-stone-200 transition">
+            🐟 嘴兜大口接鱼
+          </button>
+        </div>
+
+        <div class="text-stone-400 font-mono text-[11px]">
+          状态: <span class="font-bold text-emerald-600">双腿连杆实时演算中</span>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Narrative & Mechanics Footer -->
+  <footer class="w-full max-w-5xl text-center text-xs text-stone-500 space-y-1">
+    <p>
+      🎨 原生 HTML5 Canvas 逐帧骨骼动力学 · 鹈鹕双腿由三角反解连杆算法（IK）实时驱动蹬轮旋转
+    </p>
+    <p class="text-[11px] text-stone-400 font-mono">
+      PELICAN BICYCLE SIMULATION ENGINE · V2.0 DYNAMIC EDITION
+    </p>
+  </footer>
+
+  <!-- Animation & Sound Script -->
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let dpr = window.devicePixelRatio || 1;
+    let width = 800;
+    let height = 450;
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      width = rect.width || 800;
+      height = rect.height || 450;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // 1. Web Audio API Synthesizers
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+    let soundEnabled = true;
+
+    function getAudioContext() {
+      if (!audioCtx) audioCtx = new AudioCtx();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    }
+
+    function playBellSound() {
+      if (!soundEnabled) return;
+      const ac = getAudioContext();
+      const now = ac.currentTime;
+      function ring(t, freq) {
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0.35, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start(t);
+        osc.stop(t + 0.45);
+      }
+      ring(now, 2093);
+      ring(now + 0.09, 2349);
+      ring(now + 0.22, 2093);
+    }
+
+    let lastTickTime = 0;
+    function playPedalTick() {
+      if (!soundEnabled) return;
+      const ac = getAudioContext();
+      const now = ac.currentTime;
+      if (now - lastTickTime < 0.08) return;
+      lastTickTime = now;
+
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(700 + Math.random() * 200, now);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start(now);
+      osc.stop(now + 0.035);
+    }
+
+    function playWhoosh() {
+      if (!soundEnabled) return;
+      const ac = getAudioContext();
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(180, ac.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(320, ac.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.12, ac.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.25);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start();
+      osc.stop(ac.currentTime + 0.25);
+    }
+
+    // 2. Physics & Dynamic State
+    let speed = 24;
+    let targetSpeed = 24;
+    let crankAngle = 0;
+    let wheelAngle = 0;
+    let roadOffset = 0;
+    let seaWaveOffset = 0;
+    let timeOfDay = 'sunset';
+    let isFlapping = false;
+    let wingFlapProgress = 0;
+    let gulpFishTimer = 0;
+
+    const hudSpeed = document.getElementById('hudSpeed');
+    const hudCadence = document.getElementById('hudCadence');
+    const turboBanner = document.getElementById('turboBanner');
+    const bellToast = document.getElementById('bellToast');
+    const btnSprint = document.getElementById('btnSprint');
+    const btnBell = document.getElementById('btnBell');
+    const btnSound = document.getElementById('btnSound');
+    const soundText = document.getElementById('soundText');
+    const soundIcon = document.getElementById('soundIcon');
+    const btnFlap = document.getElementById('btnFlap');
+    const btnFish = document.getElementById('btnFish');
+
+    // Tab Switcher
+    const tabLive = document.getElementById('tabLive');
+    const tabPoster = document.getElementById('tabPoster');
+    const liveView = document.getElementById('liveView');
+    const posterView = document.getElementById('posterView');
+
+    tabLive.addEventListener('click', () => {
+      tabLive.classList.add('bg-white', 'text-stone-950', 'shadow-xs', 'font-bold');
+      tabPoster.classList.remove('bg-white', 'text-stone-950', 'shadow-xs', 'font-bold');
+      liveView.classList.remove('hidden');
+      posterView.classList.add('hidden');
+      resizeCanvas();
+    });
+
+    tabPoster.addEventListener('click', () => {
+      tabPoster.classList.add('bg-white', 'text-stone-950', 'shadow-xs', 'font-bold');
+      tabLive.classList.remove('bg-white', 'text-stone-950', 'shadow-xs', 'font-bold');
+      posterView.classList.remove('hidden');
+      liveView.classList.add('hidden');
+    });
+
+    function startSprint() {
+      targetSpeed = 62;
+      turboBanner.style.opacity = '1';
+    }
+    function endSprint() {
+      targetSpeed = 24;
+      turboBanner.style.opacity = '0';
+    }
+
+    btnSprint.addEventListener('mousedown', startSprint);
+    window.addEventListener('mouseup', endSprint);
+    btnSprint.addEventListener('touchstart', (e) => { e.preventDefault(); startSprint(); });
+    window.addEventListener('touchend', endSprint);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !e.repeat) {
+        e.preventDefault();
+        startSprint();
+      } else if (e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        triggerBell();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') endSprint();
+    });
+
+    function triggerBell() {
+      playBellSound();
+      bellToast.style.opacity = '1';
+      bellToast.style.transform = 'translate(-50%, 0) scale(1.1)';
+      setTimeout(() => {
+        bellToast.style.opacity = '0';
+        bellToast.style.transform = 'translate(-50%, 0) scale(0.8)';
+      }, 700);
+    }
+    btnBell.addEventListener('click', triggerBell);
+
+    btnSound.addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      soundText.innerText = soundEnabled ? '音效: 开' : '音效: 关';
+      soundIcon.innerText = soundEnabled ? '🔊' : '🔇';
+    });
+
+    btnFlap.addEventListener('click', () => {
+      if (!isFlapping) {
+        isFlapping = true;
+        wingFlapProgress = 0;
+        playWhoosh();
+      }
+    });
+
+    btnFish.addEventListener('click', () => {
+      gulpFishTimer = 1.0;
+    });
+
+    document.querySelectorAll('.tod-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tod-btn').forEach(b => b.classList.remove('bg-amber-500', 'font-bold'));
+        btn.classList.add('bg-amber-500', 'font-bold');
+        timeOfDay = btn.getAttribute('data-tod');
+      });
+    });
+
+    // Coastal scenery elements
+    const houses = [
+      { x: 180, color: '#FDE047', roof: '#EF4444' },
+      { x: 480, color: '#93C5FD', roof: '#F97316' },
+      { x: 820, color: '#FBCFE8', roof: '#8B5CF6' },
+      { x: 1150, color: '#A7F3D0', roof: '#DC2626' }
+    ];
+    const palms = [
+      { x: 90, scale: 0.8 },
+      { x: 320, scale: 1.1 },
+      { x: 640, scale: 0.9 },
+      { x: 980, scale: 1.15 }
+    ];
+    const gulls = [
+      { x: 200, y: 70, speed: 1.2, wing: 0 },
+      { x: 550, y: 110, speed: 0.9, wing: 2 },
+      { x: 850, y: 55, speed: 1.4, wing: 4 }
+    ];
+
+    // 3. MASTER ANIMATION LOOP
+    function render(timestamp) {
+      const nowTime = timestamp || performance.now();
+
+      // Smooth Speed interpolation
+      speed += (targetSpeed - speed) * 0.08;
+      const normalizedSpeed = speed / 20;
+
+      // Update angles & offsets
+      crankAngle += 0.09 * normalizedSpeed;
+      wheelAngle += 0.16 * normalizedSpeed;
+      roadOffset = (roadOffset + 8 * normalizedSpeed) % 80;
+      seaWaveOffset = (seaWaveOffset + 2 * normalizedSpeed) % 200;
+
+      if (Math.sin(crankAngle) > 0.96) {
+        playPedalTick();
+      }
+
+      hudSpeed.innerText = Math.round(speed);
+      hudCadence.innerText = Math.round(speed * 3.4);
+
+      if (isFlapping) {
+        wingFlapProgress += 0.08;
+        if (wingFlapProgress > Math.PI * 2) {
+          isFlapping = false;
+          wingFlapProgress = 0;
+        }
+      }
+
+      if (gulpFishTimer > 0) gulpFishTimer -= 0.02;
+
+      // Draw all layers
+      drawBackground();
+      drawCoastalScenery(normalizedSpeed);
+      drawRoad();
+      drawPelicanBicycle(crankAngle, wheelAngle, nowTime, normalizedSpeed);
+
+      requestAnimationFrame(render);
+    }
+
+    function drawBackground() {
+      let skyGrad = ctx.createLinearGradient(0, 0, 0, height * 0.7);
+      if (timeOfDay === 'sunset') {
+        skyGrad.addColorStop(0, '#FDBA74');
+        skyGrad.addColorStop(0.35, '#FDE047');
+        skyGrad.addColorStop(0.7, '#FED7AA');
+        skyGrad.addColorStop(1, '#93C5FD');
+      } else if (timeOfDay === 'day') {
+        skyGrad.addColorStop(0, '#38BDF8');
+        skyGrad.addColorStop(1, '#E0F2FE');
+      } else {
+        skyGrad.addColorStop(0, '#0F172A');
+        skyGrad.addColorStop(1, '#312E81');
+      }
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, width, height);
+
+      // Sun
+      if (timeOfDay === 'sunset') {
+        ctx.fillStyle = '#FEF08A';
+        ctx.beginPath();
+        ctx.arc(width * 0.78, height * 0.38, 36, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Distant Headland & Lighthouse
+      ctx.fillStyle = timeOfDay === 'night' ? '#1E293B' : 'rgba(124, 45, 18, 0.22)';
+      ctx.beginPath();
+      ctx.moveTo(0, height * 0.58);
+      ctx.bezierCurveTo(width * 0.2, height * 0.45, width * 0.4, height * 0.52, width * 0.65, height * 0.5);
+      ctx.lineTo(width * 0.65, height * 0.6);
+      ctx.lineTo(0, height * 0.6);
+      ctx.fill();
+
+      // Lighthouse
+      const lhX = width * 0.35;
+      const lhY = height * 0.45;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(lhX - 5, lhY, 10, 28);
+      ctx.fillStyle = '#DC2626';
+      ctx.fillRect(lhX - 5, lhY + 8, 10, 6);
+      ctx.fillRect(lhX - 5, lhY + 20, 10, 6);
+      ctx.fillStyle = '#FEF08A';
+      ctx.beginPath();
+      ctx.arc(lhX, lhY, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ocean
+      let seaGrad = ctx.createLinearGradient(0, height * 0.5, 0, height * 0.7);
+      seaGrad.addColorStop(0, '#38BDF8');
+      seaGrad.addColorStop(1, '#FDBA74');
+      ctx.fillStyle = seaGrad;
+      ctx.fillRect(0, height * 0.5, width, height * 0.2);
+
+      // Waves
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 4; i++) {
+        let wy = height * 0.52 + i * 16;
+        ctx.beginPath();
+        for (let x = -seaWaveOffset; x < width + 100; x += 55) {
+          ctx.moveTo(x, wy);
+          ctx.quadraticCurveTo(x + 14, wy - 3, x + 28, wy);
+        }
+        ctx.stroke();
+      }
+
+      // Seagulls
+      gulls.forEach((g) => {
+        g.x -= g.speed * (speed / 20);
+        if (g.x < -30) g.x = width + 40;
+        g.wing += 0.12;
+
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const wingLift = Math.sin(g.wing) * 5;
+        ctx.moveTo(g.x - 9, g.y + wingLift);
+        ctx.quadraticCurveTo(g.x - 4, g.y - 4, g.x, g.y);
+        ctx.quadraticCurveTo(g.x + 4, g.y - 4, g.x + 9, g.y + wingLift);
+        ctx.stroke();
+      });
+    }
+
+    function drawCoastalScenery(spd) {
+      houses.forEach((h) => {
+        h.x -= 2.2 * spd;
+        if (h.x < -120) h.x = width + 150;
+        const hy = height * 0.56;
+        ctx.fillStyle = h.color;
+        ctx.fillRect(h.x, hy - 34, 42, 34);
+        ctx.fillStyle = h.roof;
+        ctx.beginPath();
+        ctx.moveTo(h.x - 4, hy - 34);
+        ctx.lineTo(h.x + 21, hy - 50);
+        ctx.lineTo(h.x + 46, hy - 34);
+        ctx.fill();
+      });
+
+      palms.forEach((p) => {
+        p.x -= 3.8 * spd;
+        if (p.x < -100) p.x = width + 140;
+        ctx.save();
+        ctx.translate(p.x, height * 0.65);
+        ctx.scale(p.scale * 0.85, p.scale * 0.85);
+
+        ctx.strokeStyle = '#78350F';
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(12, -50, 18, -98);
+        ctx.stroke();
+
+        ctx.fillStyle = '#15803D';
+        [-1.4, -0.7, 0, 0.7, 1.4].forEach((a) => {
+          ctx.save();
+          ctx.translate(18, -98);
+          ctx.rotate(a);
+          ctx.beginPath();
+          ctx.ellipse(28, 0, 28, 6.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+        ctx.restore();
+      });
+    }
+
+    function drawRoad() {
+      const roadTop = height * 0.64;
+      ctx.fillStyle = '#65A30D';
+      ctx.fillRect(0, roadTop - 12, width, 14);
+      ctx.fillStyle = '#44403C';
+      ctx.fillRect(0, roadTop, width, height - roadTop);
+
+      ctx.strokeStyle = '#FACC15';
+      ctx.lineWidth = 5;
+      ctx.setLineDash([32, 28]);
+      ctx.lineDashOffset = roadOffset * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, height * 0.86);
+      ctx.lineTo(width, height * 0.86);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // 4. ANIMATED PELICAN PEDALING VINTAGE BICYCLE
+    function drawPelicanBicycle(crankAng, wAng, nowTime, nSpeed) {
+      ctx.save();
+      const cx = width * 0.44;
+      const cy = height * 0.72;
+      const bobY = Math.sin(crankAng * 2) * 3.5;
+      ctx.translate(cx, cy + bobY);
+
+      const wheelR = 44;
+      const wheelDist = 136;
+      const rearX = -wheelDist / 2;
+      const frontX = wheelDist / 2;
+      const wheelY = 18;
+
+      function drawW(wx, wy) {
+        ctx.save();
+        ctx.translate(wx, wy);
+
+        ctx.strokeStyle = '#1C1917';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(0, 0, wheelR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#E5E5E5';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, wheelR - 3, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.rotate(wAng);
+        ctx.strokeStyle = 'rgba(212, 212, 216, 0.75)';
+        ctx.lineWidth = 1.3;
+        for (let s = 0; s < 12; s++) {
+          let a = (s * Math.PI * 2) / 12;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(a) * (wheelR - 3), Math.sin(a) * (wheelR - 3));
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = '#A1A1AA';
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+      drawW(rearX, wheelY);
+      drawW(frontX, wheelY);
+
+      // Bicycle Frame
+      const bbX = -10;
+      const bbY = wheelY - 4;
+      const sTopX = -30;
+      const sTopY = wheelY - 52;
+      const hTopX = 42;
+      const hTopY = wheelY - 62;
+
+      ctx.strokeStyle = '#10B981'; // Mint Green
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(rearX, wheelY);
+      ctx.lineTo(bbX, bbY);
+      ctx.lineTo(sTopX, sTopY);
+      ctx.lineTo(rearX, wheelY);
+      ctx.moveTo(bbX, bbY);
+      ctx.lineTo(hTopX, hTopY + 10);
+      ctx.lineTo(sTopX, sTopY);
+      ctx.moveTo(hTopX, hTopY);
+      ctx.lineTo(frontX, wheelY);
+      ctx.stroke();
+
+      // Saddle & Handlebars
+      ctx.fillStyle = '#78350F';
+      ctx.beginPath();
+      ctx.moveTo(sTopX - 15, sTopY - 5);
+      ctx.quadraticCurveTo(sTopX, sTopY - 12, sTopX + 13, sTopY - 5);
+      ctx.fill();
+
+      ctx.strokeStyle = '#D4D4D8';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(hTopX, hTopY);
+      ctx.lineTo(hTopX - 3, hTopY - 16);
+      ctx.lineTo(hTopX + 11, hTopY - 15);
+      ctx.stroke();
+
+      // Front Basket with Baguette
+      ctx.fillStyle = '#D97706';
+      ctx.beginPath();
+      ctx.roundRect(hTopX + 9, hTopY - 22, 26, 20, 3.5);
+      ctx.fill();
+
+      ctx.fillStyle = '#F59E0B';
+      ctx.save();
+      ctx.translate(hTopX + 24, hTopY - 28);
+      ctx.rotate(0.3);
+      ctx.fillRect(0, 0, 7, 22);
+      ctx.restore();
+
+      // Bicycle Bell
+      ctx.fillStyle = '#FACC15';
+      ctx.beginPath();
+      ctx.arc(hTopX + 2, hTopY - 18, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Pelican IK Legs
+      const hipX = sTopX + 4;
+      const hipY = sTopY - 14;
+      const cLen = 21;
+      const p1X = bbX + Math.cos(crankAng) * cLen;
+      const p1Y = bbY + Math.sin(crankAng) * cLen;
+      const p2X = bbX + Math.cos(crankAng + Math.PI) * cLen;
+      const p2Y = bbY + Math.sin(crankAng + Math.PI) * cLen;
+
+      function drawLeg(hx, hy, fx, fy, isBack) {
+        ctx.strokeStyle = isBack ? '#EA580C' : '#F97316';
+        ctx.lineWidth = 5.5;
+        const midX = (hx + fx) / 2 + 13;
+        const midY = (hy + fy) / 2 - 5;
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(midX, midY);
+        ctx.lineTo(fx, fy);
+        ctx.stroke();
+
+        ctx.fillStyle = isBack ? '#C2410C' : '#FB923C';
+        ctx.beginPath();
+        ctx.moveTo(fx - 9, fy + 2);
+        ctx.lineTo(fx + 13, fy + 2);
+        ctx.lineTo(fx + 9, fy - 3.5);
+        ctx.fill();
+
+        ctx.strokeStyle = '#27272A';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(fx - 8, fy + 2);
+        ctx.lineTo(fx + 8, fy + 2);
+        ctx.stroke();
+      }
+      drawLeg(hipX - 2, hipY, p2X, p2Y, true);
+
+      // Pelican Body
+      ctx.fillStyle = '#F8FAFC';
+      ctx.beginPath();
+      ctx.ellipse(hipX + 11, hipY - 19, 30, 22, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Wing
+      ctx.save();
+      ctx.translate(hipX + 9, hipY - 19);
+      if (isFlapping) {
+        ctx.rotate(-Math.sin(wingFlapProgress) * 0.75);
+      }
+      ctx.fillStyle = '#CBD5E1';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 22, 13, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      drawLeg(hipX + 2, hipY, p1X, p1Y, false);
+
+      // Neck & Head
+      const headX = hipX + 35;
+      const headY = hipY - 54;
+      ctx.strokeStyle = '#F8FAFC';
+      ctx.lineWidth = 15;
+      ctx.beginPath();
+      ctx.moveTo(hipX + 20, hipY - 28);
+      ctx.quadraticCurveTo(headX - 11, headY + 16, headX, headY);
+      ctx.stroke();
+
+      ctx.fillStyle = '#F8FAFC';
+      ctx.beginPath();
+      ctx.arc(headX, headY, 16, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Beak & Pouch
+      const bLen = 58;
+      ctx.fillStyle = '#F59E0B';
+      ctx.beginPath();
+      ctx.moveTo(headX + 9, headY - 4);
+      ctx.lineTo(headX + bLen, headY + 5);
+      ctx.lineTo(headX + 9, headY + 4);
+      ctx.fill();
+
+      ctx.fillStyle = '#FDBA74';
+      ctx.beginPath();
+      ctx.moveTo(headX + 9, headY + 4);
+      ctx.quadraticCurveTo(headX + bLen * 0.45, headY + (gulpFishTimer > 0 ? 30 : 17), headX + bLen - 4, headY + 4);
+      ctx.fill();
+
+      // Cap & Sunglasses
+      ctx.fillStyle = '#78350F';
+      ctx.beginPath();
+      ctx.ellipse(headX - 2, headY - 13, 16, 8, -0.15, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#18181B';
+      ctx.beginPath();
+      ctx.ellipse(headX + 7, headY - 1.5, 6.5, 5, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Arm holding handlebars
+      ctx.strokeStyle = '#F8FAFC';
+      ctx.lineWidth = 7.5;
+      ctx.beginPath();
+      ctx.moveTo(hipX + 26, hipY - 26);
+      ctx.lineTo(hTopX + 9, hTopY - 15);
+      ctx.stroke();
+
+      // Flapping Scarf
+      ctx.save();
+      ctx.translate(headX - 3, headY + 9);
+      const w1 = Math.sin(nowTime * 0.015 * nSpeed) * 11;
+      const w2 = Math.cos(nowTime * 0.018 * nSpeed) * 15;
+      ctx.strokeStyle = '#DC2626';
+      ctx.lineWidth = 7.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(-20, w1, -45, w2);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.restore();
+    }
+
+    // Launch Loop
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>
