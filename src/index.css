@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-serif: "Newsreader", "Times New Roman", Georgia, serif;
+    --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+
+    /* Light Academia & Paper palette */
+    --paper-bg: #FAF9F5;
+    --paper-card: #FFFFFF;
+    --paper-border: #E8E5DD;
+    --paper-ink: #1C1917;
+    --paper-sub: #78716C;
+    --paper-muted: #A8A29E;
+    
+    /* Functional colors */
+    --accent-amber: #D97706;
+    --accent-red: #E11D48;
+    --accent-emerald: #059669;
+    --accent-indigo: #4F46E5;
+    --marker-yellow: #FEF08A;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #F3F1EA;
+    color: var(--paper-ink);
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+  }
+}
+
+.font-serif-academic {
+  font-family: var(--font-serif);
+}
+
+.font-mono-code {
+  font-family: var(--font-mono);
+}
+
+/* Subtle paper texture overlay */
+.paper-sheet {
+  background-color: var(--paper-bg);
+  background-image: radial-gradient(#E5E2D8 0.75px, transparent 0.75px);
+  background-size: 16px 16px;
+  box-shadow: 
+    0 1px 1px rgba(0,0,0,0.04), 
+    0 4px 8px rgba(0,0,0,0.03), 
+    0 16px 32px rgba(0,0,0,0.05),
+    0 0 0 1px rgba(0,0,0,0.04);
+}
+
+/* Red film / Mask mode */
+.mask-revealed {
+  filter: blur(0px);
+  opacity: 1;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mask-hidden {
+  filter: blur(5px);
+  opacity: 0.2;
+  user-select: none;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Custom scrollbars for clean paper look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D6D3D1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A8A29E;
+}
