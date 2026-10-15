@@ -26,7 +26,7 @@ export interface DailyLearningSession {
   isGraduated: boolean;        // True when all words have passed all rounds and entered Ebbinghaus
 }
 
-const STORAGE_KEY = 'paperwords_progressive_session_v1';
+const STORAGE_KEY = 'paperwords_progressive_session_v2';
 
 export const sessionManager = {
   // Get date key for today: YYYY-MM-DD
@@ -35,10 +35,14 @@ export const sessionManager = {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   },
 
+  getStorageKey(deckId: string, userId?: string): string {
+    return userId ? `${STORAGE_KEY}_${userId}_${deckId}` : `${STORAGE_KEY}_${deckId}`;
+  },
+
   // Load active session from localStorage
-  loadSession(deckId: string): DailyLearningSession | null {
+  loadSession(deckId: string, userId?: string): DailyLearningSession | null {
     try {
-      const raw = localStorage.getItem(`${STORAGE_KEY}_${deckId}`);
+      const raw = localStorage.getItem(this.getStorageKey(deckId, userId));
       if (!raw) return null;
       const session: DailyLearningSession = JSON.parse(raw);
       // Validate date key
@@ -53,18 +57,18 @@ export const sessionManager = {
   },
 
   // Save session state
-  saveSession(session: DailyLearningSession) {
+  saveSession(session: DailyLearningSession, userId?: string) {
     try {
-      localStorage.setItem(`${STORAGE_KEY}_${session.deckId}`, JSON.stringify(session));
+      localStorage.setItem(this.getStorageKey(session.deckId, userId), JSON.stringify(session));
     } catch (e) {
       console.warn('Failed to save learning session:', e);
     }
   },
 
   // Initialize a new session for today's words
-  initSession(deckId: string, targetWords: WordItem[]): DailyLearningSession {
+  initSession(deckId: string, targetWords: WordItem[], userId?: string): DailyLearningSession {
     const todayKey = this.getTodayKey();
-    const existing = this.loadSession(deckId);
+    const existing = this.loadSession(deckId, userId);
     if (existing && existing.dateKey === todayKey && existing.targetWordIds.length > 0) {
       return existing;
     }
@@ -90,7 +94,8 @@ export const sessionManager = {
   recordWordRating(
     session: DailyLearningSession,
     wordId: string,
-    rating: 1 | 2 | 3
+    rating: 1 | 2 | 3,
+    userId?: string
   ): {
     updatedSession: DailyLearningSession;
     roundFinished: boolean;
@@ -146,7 +151,7 @@ export const sessionManager = {
       }
     }
 
-    this.saveSession(updatedSession);
+    this.saveSession(updatedSession, userId);
     return {
       updatedSession,
       roundFinished,
@@ -155,9 +160,9 @@ export const sessionManager = {
   },
 
   // Clear session (e.g. when resetting daily plan)
-  clearSession(deckId: string) {
+  clearSession(deckId: string, userId?: string) {
     try {
-      localStorage.removeItem(`${STORAGE_KEY}_${deckId}`);
+      localStorage.removeItem(this.getStorageKey(deckId, userId));
     } catch (e) {}
   },
 

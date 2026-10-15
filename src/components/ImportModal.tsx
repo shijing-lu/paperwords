@@ -8,12 +8,14 @@ import type { DeckItem, WordItem } from '../types';
 interface ImportModalProps {
   isOpen: boolean;
   onClose: () => void;
+  userId: string;
   onImportSuccess: (newDeckId: string) => void;
 }
 
 export const ImportModal: React.FC<ImportModalProps> = ({
   isOpen,
   onClose,
+  userId,
   onImportSuccess,
 }) => {
   const [inputText, setInputText] = useState('');
@@ -77,6 +79,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
       const deck: DeckItem = {
         id: newDeckId,
+        userId,
         title: finalTitle,
         description: `包含 ${parseResult.words.length} 个单词，格式: ${parseResult.detectedFormat.toUpperCase()}`,
         totalWords: parseResult.words.length,
@@ -91,6 +94,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       const wordsToInsert: WordItem[] = parseResult.words.map((item, idx) => ({
         ...item,
         id: `${newDeckId}-${idx + 1}`,
+        userId,
         deckId: newDeckId,
       }));
 

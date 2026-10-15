@@ -7,6 +7,7 @@ import { db } from '../../db';
 interface ArticleDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  userId: string;
   articles: ArticleItem[];
   currentArticleId: string;
   onSelectArticle: (articleId: string) => void;
@@ -15,6 +16,7 @@ interface ArticleDrawerProps {
 export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
   isOpen,
   onClose,
+  userId,
   articles,
   currentArticleId,
   onSelectArticle,
@@ -48,6 +50,7 @@ export const ArticleDrawer: React.FC<ArticleDrawerProps> = ({
     const totalWords = newContent.trim().split(/\s+/).length;
     const newArticle: ArticleItem = {
       id: `article-${Date.now()}`,
+      userId,
       title,
       source: newSource.trim() || '自导入文章',
       content: newContent.trim(),

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks';
 import confetti from 'canvas-confetti';
 import { db } from './db';
-import type { ViewMode, WordItem, PageTab, ActiveRecallMode, PaperColumns, ArticleItem, WordStudyStats } from './types';
+import type { ViewMode, WordItem, DeckItem, PageTab, ActiveRecallMode, PaperColumns, ArticleItem, WordStudyStats, UserProfile } from './types';
 import {
   DEFAULT_DECK_ID,
   KAOYAN_DECK_ID,
@@ -19,6 +19,7 @@ import { notificationEngine } from './engine/notifications';
 import { soundEffects } from './engine/soundEffects';
 import { sessionManager, type DailyLearningSession } from './engine/sessionManager';
 import { recordWordEncounter } from './engine/heatmap';
+import { getOrInitCurrentUser } from './engine/auth';
 import { Header } from './components/Header';
 import { BentoDashboard } from './components/BentoDashboard';
 import { A4Paper } from './components/paper/A4Paper';
@@ -26,6 +27,8 @@ import { ImportModal } from './components/ImportModal';
 import { HotkeysModal } from './components/HotkeysModal';
 import { SettingsModal } from './components/SettingsModal';
 import { StatsModal } from './components/StatsModal';
+import { UserProfileModal } from './components/UserProfileModal';
+import { SponsorWidget } from './components/SponsorWidget';
 import { ReadingReader } from './components/reading/ReadingReader';
 import { ArticleDrawer } from './components/reading/ArticleDrawer';
 import { ReinforceCardModal } from './components/ReinforceCardModal';
@@ -80,6 +83,16 @@ export const App: React.FC = () => {
   const [dailySession, setDailySession] = useState<DailyLearningSession | null>(null);
   const [roundAlert, setRoundAlert] = useState<{ type: 'advance' | 'graduation'; text: string } | null>(null);
 
+  // User Profile & Isolation
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [isUserProfileOpen, setIsUserProfileOpen] = useState(false);
+
+  useEffect(() => {
+    getOrInitCurrentUser().then((u) => {
+      setCurrentUser(u);
+    });
+  }, []);
+
   // Modals & Drawers
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isHotkeysOpen, setIsHotkeysOpen] = useState(false);
@@ -97,48 +110,63 @@ export const App: React.FC = () => {
   // 倒计时文本
   const [countdownText, setCountdownText] = useState<string | null>(null);
 
-  // 1. Reactive DB queries
-  const decks = useLiveQuery(() => db.decks.toArray(), []) || [];
-  const allWordsInDeck = useLiveQuery(
-    () => (currentDeckId ? db.words.where({ deckId: currentDeckId }).toArray() : []),
-    [currentDeckId]
+  // 1. Reactive DB queries - 严格按当前用户的 userId 隔离过滤
+  const decks = useLiveQuery(
+    () => (currentUser ? db.decks.where({ userId: currentUser.id }).toArray() : []),
+    [currentUser?.id]
   ) || [];
-  const articles = useLiveQuery(() => db.articles.toArray(), []) || [];
 
-  // 种子数据初始化 (包含考研 335 词与预置阅读文章)
+  const allWordsInDeck = useLiveQuery(
+    () =>
+      currentUser && currentDeckId
+        ? db.words.where({ userId: currentUser.id, deckId: currentDeckId }).toArray()
+        : [],
+    [currentUser?.id, currentDeckId]
+  ) || [];
+
+  const articles = useLiveQuery(
+    () => (currentUser ? db.articles.where({ userId: currentUser.id }).toArray() : []),
+    [currentUser?.id]
+  ) || [];
+
+  // 专属独立空间种子数据初始化 (为每个新访客生成干净、零污染的独立默认词书)
   useEffect(() => {
-    async function initSeed() {
-      // 1. 词书初始化
-      const hasKaoyan = await db.decks.get(DEFAULT_DECK_ID);
-      if (!hasKaoyan) {
-        await db.transaction('rw', db.decks, db.words, async () => {
-          await db.decks.put(KAOYAN_DECK);
-          const kaoyanWords = getKaoyanWords().map((w, idx) => ({
+    if (!currentUser) return;
+    const user = currentUser;
+    async function initUserSeed() {
+      const existingUserDecks = await db.decks.where({ userId: user.id }).toArray();
+      if (existingUserDecks.length === 0) {
+        await db.transaction('rw', db.decks, db.words, db.articles, async () => {
+          const userDeckId = `kaoyan-${user.id}`;
+          const userDeck: DeckItem = {
+            ...KAOYAN_DECK,
+            id: userDeckId,
+            userId: user.id,
+            isPreset: true,
+          };
+          await db.decks.put(userDeck);
+
+          const kaoyanWords: WordItem[] = getKaoyanWords().map((w, idx) => ({
             ...w,
-            id: `${KAOYAN_DECK_ID}-${idx + 1}`,
+            id: `${userDeckId}-${idx + 1}`,
+            userId: user.id,
+            deckId: userDeckId,
           }));
           await db.words.bulkPut(kaoyanWords);
 
-          const hasGre = await db.decks.get(GRE_DECK_ID);
-          if (!hasGre) {
-            await db.decks.put(GRE_DECK);
-            const greWords: WordItem[] = DEFAULT_WORDS.map((w, idx) => ({
-              ...w,
-              id: `${GRE_DECK_ID}-${idx + 1}`,
-            }));
-            await db.words.bulkPut(greWords);
-          }
+          const userArticles: ArticleItem[] = DEFAULT_ARTICLES.map((art) => ({
+            ...art,
+            id: `${art.id}-${user.id}`,
+            userId: user.id,
+          }));
+          await db.articles.bulkPut(userArticles);
+
+          setCurrentDeckId(userDeckId);
         });
       }
-
-      // 2. 阅读文章初始化
-      const artCount = await db.articles.count();
-      if (artCount === 0) {
-        await db.articles.bulkPut(DEFAULT_ARTICLES);
-      }
     }
-    initSeed();
-  }, []);
+    initUserSeed();
+  }, [currentUser]);
 
   // Update currentDeck
   const currentDeck = useMemo(() => {
@@ -190,9 +218,9 @@ export const App: React.FC = () => {
 
   // 3. 自动同步或初始化今日多轮新学会话 (In-Session Leech Elimination Loop)
   useEffect(() => {
-    if (!currentDeckId || allWordsInDeck.length === 0) return;
+    if (!currentDeckId || allWordsInDeck.length === 0 || !currentUser) return;
 
-    const existing = sessionManager.loadSession(currentDeckId);
+    const existing = sessionManager.loadSession(currentDeckId, currentUser.id);
     if (existing) {
       setDailySession(existing);
     } else {
@@ -204,13 +232,13 @@ export const App: React.FC = () => {
         });
       const target = unlearned.slice(0, dailyTarget);
       if (target.length > 0) {
-        const newSession = sessionManager.initSession(currentDeckId, target);
+        const newSession = sessionManager.initSession(currentDeckId, target, currentUser.id);
         setDailySession(newSession);
       } else {
         setDailySession(null);
       }
     }
-  }, [currentDeckId, allWordsInDeck, dailyTarget]);
+  }, [currentDeckId, allWordsInDeck, dailyTarget, currentUser]);
 
   // 计算今日新学递进攻坚进度与准确率统计
   const sessionStats = useMemo(() => {
@@ -228,8 +256,8 @@ export const App: React.FC = () => {
 
   // 重置今日新学会话
   const handleResetDailySession = useCallback(() => {
-    if (!currentDeckId) return;
-    sessionManager.clearSession(currentDeckId);
+    if (!currentDeckId || !currentUser) return;
+    sessionManager.clearSession(currentDeckId, currentUser.id);
     const unlearned = allWordsInDeck
       .filter((w) => w.reviewState.status === 'new')
       .sort((a, b) => {
@@ -238,7 +266,7 @@ export const App: React.FC = () => {
       });
     const target = unlearned.slice(0, dailyTarget);
     if (target.length > 0) {
-      const newSession = sessionManager.initSession(currentDeckId, target);
+      const newSession = sessionManager.initSession(currentDeckId, target, currentUser.id);
       setDailySession(newSession);
     } else {
       setDailySession(null);
@@ -246,7 +274,7 @@ export const App: React.FC = () => {
     setRoundAlert(null);
     setCurrentListIndex(1);
     setActiveIndex(0);
-  }, [currentDeckId, allWordsInDeck, dailyTarget]);
+  }, [currentDeckId, allWordsInDeck, dailyTarget, currentUser]);
 
   // (d) 计算当前视图展示的单词列表与分页
   const { activeWords, totalPages, pageTitle, emptyMessage } = useMemo(() => {
@@ -419,7 +447,8 @@ export const App: React.FC = () => {
         const { updatedSession, roundFinished, allGraduated } = sessionManager.recordWordRating(
           dailySession,
           wordId,
-          rating
+          rating,
+          currentUser?.id
         );
         setDailySession(updatedSession);
 
@@ -681,8 +710,10 @@ export const App: React.FC = () => {
 
   // 阅读模式向当前词库收录生词
   const handleAddWordFromReading = async (word: string, definition: string, phonetic?: string) => {
+    if (!currentUser) return;
     const newWordItem: WordItem = {
       id: `word-${Date.now()}`,
+      userId: currentUser.id,
       deckId: currentDeckId,
       listIndex: 1,
       order: allWordsInDeck.length + 1,
@@ -738,6 +769,7 @@ export const App: React.FC = () => {
       <Header
         decks={decks}
         currentDeck={currentDeck}
+        currentUser={currentUser}
         activeTab={activeTab}
         dueReviewCount={dueReviewWords.length}
         stumbleCount={stumbleWords.length}
@@ -752,6 +784,7 @@ export const App: React.FC = () => {
         onOpenHotkeys={() => setIsHotkeysOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenStats={() => setIsStatsOpen(true)}
+        onOpenUserProfile={() => setIsUserProfileOpen(true)}
       />
 
       {/* 2. Top Bento Dashboard (在单词视图下显示) */}
@@ -818,6 +851,7 @@ export const App: React.FC = () => {
       <ImportModal
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
+        userId={currentUser?.id || 'guest_default'}
         onImportSuccess={(newDeckId) => {
           setCurrentDeckId(newDeckId);
           handleSelectTab('today');
@@ -861,6 +895,7 @@ export const App: React.FC = () => {
       <ArticleDrawer
         isOpen={isArticleDrawerOpen}
         onClose={() => setIsArticleDrawerOpen(false)}
+        userId={currentUser?.id || 'guest_default'}
         articles={articles}
         currentArticleId={currentArticleId}
         onSelectArticle={(id) => setCurrentArticleId(id)}
@@ -871,6 +906,19 @@ export const App: React.FC = () => {
         data={reinforceModalData}
         onDismiss={handleDismissReinforce}
       />
+
+      {/* 10. User Profile & Data Isolation Modal */}
+      <UserProfileModal
+        isOpen={isUserProfileOpen}
+        onClose={() => setIsUserProfileOpen(false)}
+        currentUser={currentUser}
+        onUserChanged={(updated) => {
+          setCurrentUser(updated);
+        }}
+      />
+
+      {/* 11. Right Floating Sponsor / Catgirl Tip Widget */}
+      <SponsorWidget />
     </div>
   );
 };

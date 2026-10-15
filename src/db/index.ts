@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { DeckItem, WordItem, ArticleItem } from '../types';
+import type { DeckItem, WordItem, ArticleItem, UserProfile } from '../types';
 
 export interface CachedDictEntry {
   word: string;
@@ -11,6 +11,7 @@ export interface CachedDictEntry {
 }
 
 export class PaperWordsDatabase extends Dexie {
+  users!: Table<UserProfile, string>;
   decks!: Table<DeckItem, string>;
   words!: Table<WordItem, string>;
   articles!: Table<ArticleItem, string>;
@@ -32,6 +33,25 @@ export class PaperWordsDatabase extends Dexie {
       words: 'id, deckId, listIndex, [deckId+listIndex], word, [deckId+reviewState.status]',
       articles: 'id, title, createdAt, updatedAt',
       dictionaryCache: 'word, updatedAt',
+    });
+    this.version(4).stores({
+      users: 'id, nickname, lastActiveAt',
+      decks: 'id, userId, [userId+createdAt], title',
+      words: 'id, userId, deckId, [userId+deckId], [userId+deckId+listIndex], [userId+deckId+reviewState.status]',
+      articles: 'id, userId, createdAt',
+      dictionaryCache: 'word, updatedAt',
+    }).upgrade(async (tx) => {
+      // 兼容历史老数据：自动为已有记录填充默认用户 ID
+      const defaultUserId = 'user_legacy';
+      await tx.table('decks').toCollection().modify((deck: any) => {
+        if (!deck.userId) deck.userId = defaultUserId;
+      });
+      await tx.table('words').toCollection().modify((word: any) => {
+        if (!word.userId) word.userId = defaultUserId;
+      });
+      await tx.table('articles').toCollection().modify((art: any) => {
+        if (!art.userId) art.userId = defaultUserId;
+      });
     });
   }
 }

@@ -6,6 +6,8 @@ export const DEFAULT_DECK_ID = 'preset-kaoyan-core-335';
 export const KAOYAN_DECK_ID = 'preset-kaoyan-core-335';
 export const KAOYAN_DECK: DeckItem = {
   id: KAOYAN_DECK_ID,
+  userId: 'system',
+  isPreset: true,
   title: '考研英语核心高频词汇串讲（黑幕自测版 · 335词）',
   description: '涵盖政法法律、经济商业、教育、医疗保健、观点态度五大主题，结合真题考点与艾宾浩斯主动回忆。',
   totalWords: kaoyanWordsRaw.length,
@@ -16,7 +18,7 @@ export const KAOYAN_DECK: DeckItem = {
   sourceType: 'preset',
 };
 
-export function getKaoyanWords(): Omit<WordItem, 'id'>[] {
+export function getKaoyanWords(): Omit<WordItem, 'id' | 'userId'>[] {
   return kaoyanWordsRaw.map((item, idx) => {
     const listIndex = Math.floor(idx / 30) + 1;
     const order = (idx % 30) + 1;
@@ -46,6 +48,8 @@ export function getKaoyanWords(): Omit<WordItem, 'id'>[] {
 export const GRE_DECK_ID = 'preset-gre-core-1';
 export const GRE_DECK: DeckItem = {
   id: GRE_DECK_ID,
+  userId: 'system',
+  isPreset: true,
   title: 'GRE 核心高频认知词单 (杨鹏17天推荐)',
   description: '精选高频核心词汇，采用 A4 纸感双列排版，配合 5m/30m/12h 艾宾浩斯即时扫读复习。',
   totalWords: 30,
@@ -56,7 +60,7 @@ export const GRE_DECK: DeckItem = {
   sourceType: 'preset',
 };
 
-export const DEFAULT_WORDS: Omit<WordItem, 'id'>[] = [
+export const DEFAULT_WORDS: Omit<WordItem, 'id' | 'userId'>[] = [
   {
     deckId: DEFAULT_DECK_ID,
     listIndex: 1,

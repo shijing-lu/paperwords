@@ -14,11 +14,12 @@ import {
   BookOpen,
   BarChart3
 } from 'lucide-react';
-import type { DeckItem, PageTab } from '../types';
+import type { DeckItem, PageTab, UserProfile } from '../types';
 
 interface HeaderProps {
   decks: DeckItem[];
   currentDeck: DeckItem | null;
+  currentUser: UserProfile | null;
   activeTab: PageTab;
   dueReviewCount: number;
   stumbleCount: number;
@@ -29,11 +30,13 @@ interface HeaderProps {
   onOpenHotkeys: () => void;
   onOpenSettings: () => void;
   onOpenStats: () => void;
+  onOpenUserProfile: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   decks,
   currentDeck,
+  currentUser,
   activeTab,
   dueReviewCount,
   stumbleCount,
@@ -44,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHotkeys,
   onOpenSettings,
   onOpenStats,
+  onOpenUserProfile,
 }) => {
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
 
@@ -148,6 +152,15 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <BarChart3 className="w-3.5 h-3.5 text-amber-700" />
             <span className="hidden sm:inline">今日统计</span>
+          </button>
+
+          <button
+            onClick={onOpenUserProfile}
+            title="独立学习者空间 · 备份与切换"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 border border-stone-200 rounded-md transition font-medium"
+          >
+            <span>{currentUser?.avatarEmoji || '🦉'}</span>
+            <span className="max-w-[70px] sm:max-w-[110px] truncate">{currentUser?.nickname || '学习者'}</span>
           </button>
 
           <button

@@ -40,8 +40,17 @@ export interface WordStudyStats {
   studyHistory?: WordStudyLog[];
 }
 
+export interface UserProfile {
+  id: string;              // 唯一租户 ID (如 "guest-7x9a2b")
+  nickname: string;        // 用户昵称，如 "独立学习者"
+  avatarEmoji?: string;    // 头像 Emoji，如 "🦉", "📖", "🚀"
+  createdAt: number;
+  lastActiveAt: number;
+}
+
 export interface WordItem {
   id: string;              // 唯一 UUID
+  userId: string;          // 归属租户/学习者 ID
   deckId: string;          // 关联词书 ID
   listIndex: number;       // 所属 A4 纸单元编号 (1, 2, 3...)
   order: number;           // 在单元内的排序
@@ -58,6 +67,8 @@ export interface WordItem {
 
 export interface DeckItem {
   id: string;
+  userId: string;          // 归属租户/学习者 ID (system 为官方公共库)
+  isPreset?: boolean;      // 是否为官方预置公共母库
   title: string;
   description?: string;
   totalWords: number;
@@ -91,6 +102,7 @@ export type ReadingModeType = 'immersive' | 'focus' | 'cloze';
 
 export interface ArticleItem {
   id: string;
+  userId: string;          // 归属租户/学习者 ID
   title: string;
   content: string;
   source?: string;

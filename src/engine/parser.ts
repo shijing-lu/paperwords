@@ -2,7 +2,7 @@ import type { WordItem, ReviewState } from '../types';
 
 export interface ParseResult {
   title: string;
-  words: Omit<WordItem, 'id' | 'deckId'>[];
+  words: Omit<WordItem, 'id' | 'deckId' | 'userId'>[];
   totalCount: number;
   detectedFormat: 'json' | 'eudic' | 'maimemo' | 'csv' | 'text';
 }
@@ -235,7 +235,7 @@ function formatIntoA4Lists(
   wordsPerList: number,
   detectedFormat: ParseResult['detectedFormat']
 ): ParseResult {
-  const words: Omit<WordItem, 'id' | 'deckId'>[] = rawList.map((item, index) => {
+  const words: Omit<WordItem, 'id' | 'deckId' | 'userId'>[] = rawList.map((item, index) => {
     const listIndex = Math.floor(index / wordsPerList) + 1;
     const order = (index % wordsPerList) + 1;
 
