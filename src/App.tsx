@@ -13,7 +13,7 @@ import {
   DEFAULT_WORDS,
 } from './data/defaultDecks';
 import { DEFAULT_ARTICLES } from './data/defaultArticles';
-import { calculateNextReviewState } from './engine/ebbinghaus';
+import { calculateNextReviewState, sanitizeCorruptedWordReviews } from './engine/ebbinghaus';
 import { speechEngine } from './engine/speech';
 import { notificationEngine } from './engine/notifications';
 import { soundEffects } from './engine/soundEffects';
@@ -207,6 +207,19 @@ export const App: React.FC = () => {
       setActiveIndex(0);
     }
   }, [decks, currentDeckId]);
+
+  // 自动数据清洗与校正：平滑修复历史版本中被旧逻辑（5m/30m/12h）污染的假过期数据
+  const hasRepairedCorruptedReviews = useRef(false);
+  useEffect(() => {
+    if (!currentUser || allWordsInDeck.length === 0 || hasRepairedCorruptedReviews.current) return;
+    const { repairedWords, repairedCount } = sanitizeCorruptedWordReviews(allWordsInDeck);
+    if (repairedCount > 0) {
+      db.words.bulkPut(repairedWords).then(() => {
+        console.log(`[Ebbinghaus] 成功自动校正了 ${repairedCount} 个历史假过期单词的科学复习日程！`);
+      });
+    }
+    hasRepairedCorruptedReviews.current = true;
+  }, [currentUser, allWordsInDeck]);
 
   // 2. 响应式词汇切片（严格遵循艾宾浩斯规律：今日新学计划中打标后立即出队归档！）
   const now = Date.now();

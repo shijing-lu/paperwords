@@ -12,7 +12,7 @@
  */
 
 import type { WordItem, ReviewState } from '../types';
-import { calculateNextReviewState } from './ebbinghaus';
+import { calculateNextReviewState, calculateTargetReviewDate } from './ebbinghaus';
 
 export interface DailyLearningSession {
   deckId: string;
@@ -170,8 +170,8 @@ export const sessionManager = {
   generateGraduationUpdates(session: DailyLearningSession, wordsInDeck: WordItem[]): WordItem[] {
     const wordMap = new Map(wordsInDeck.map((w) => [w.id, w]));
     const now = Date.now();
-    const intervalMinutes = 5; // 艾宾浩斯第 1 周期：5 分钟后首轮复习
-    const nextReviewDate = now + intervalMinutes * 60 * 1000;
+    // 科学修正：今日新学达成毕业后，正式排入艾宾浩斯抗遗忘第 1 周期，在明天（1 天后清晨 04:00）开始首轮复习
+    const nextReviewDate = calculateTargetReviewDate(1);
 
     const graduatedWords: WordItem[] = [];
 
@@ -190,10 +190,10 @@ export const sessionManager = {
         reviewState: {
           ...original.reviewState,
           repetition: 1,
-          interval: intervalMinutes / (24 * 60),
+          interval: 1, // 1 天后
           easeFactor,
           lastReviewDate: now,
-          nextReviewDate,
+          nextReviewDate, // 明天清晨 04:00！绝非 5 分钟后！
           lapses,
           status: 'learning',
           lastRating: 1,
