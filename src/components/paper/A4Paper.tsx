@@ -28,6 +28,14 @@ export interface SessionProgressInfo {
   isGraduated: boolean;
 }
 
+export interface ReviewFilterState {
+  current: 'due' | 'upcoming' | 'all';
+  dueCount: number;
+  upcomingCount: number;
+  allCount: number;
+  onChange: (filter: 'due' | 'upcoming' | 'all') => void;
+}
+
 interface A4PaperProps {
   pageTitle: string;
   deckTitle: string;
@@ -53,6 +61,7 @@ interface A4PaperProps {
   onDismissRoundAlert?: () => void;
   onResetSession?: () => void;
   onGoToReview?: () => void;
+  reviewFilter?: ReviewFilterState;
 }
 
 export const A4Paper: React.FC<A4PaperProps> = ({
@@ -80,6 +89,7 @@ export const A4Paper: React.FC<A4PaperProps> = ({
   onDismissRoundAlert,
   onResetSession,
   onGoToReview,
+  reviewFilter,
 }) => {
   // Completion calculation
   const ratedCount = words.filter((w) => w.reviewState.lastRating !== undefined).length;
@@ -134,41 +144,83 @@ export const A4Paper: React.FC<A4PaperProps> = ({
               </div>
             </div>
 
-            {/* Middle: 3-Dimensional Recall Mode Switcher */}
-            <div className="flex items-center gap-1 bg-stone-100/90 p-0.5 rounded-lg border border-stone-200/80">
-              <button
-                onClick={() => onChangeRecallMode('en-to-cn')}
-                className={`px-2 py-1 text-xs rounded-md transition font-medium ${
-                  recallMode === 'en-to-cn'
-                    ? 'bg-white text-stone-900 shadow-2xs font-semibold'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-                title="看英文，回忆中文释义"
-              >
-                英译中 (遮义)
-              </button>
-              <button
-                onClick={() => onChangeRecallMode('cn-to-en')}
-                className={`px-2 py-1 text-xs rounded-md transition font-medium ${
-                  recallMode === 'cn-to-en'
-                    ? 'bg-white text-stone-900 shadow-2xs font-semibold'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-                title="看中文，回忆英文拼写"
-              >
-                中译英 (遮词)
-              </button>
-              <button
-                onClick={() => onChangeRecallMode('cloze')}
-                className={`px-2 py-1 text-xs rounded-md transition font-medium ${
-                  recallMode === 'cloze'
-                    ? 'bg-white text-stone-900 shadow-2xs font-semibold'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-                title="真题例句挖空实战"
-              >
-                真题挖空
-              </button>
+            {/* Middle: Recall Mode or Review Filter Switcher */}
+            <div className="flex flex-wrap items-center gap-2">
+              {reviewFilter && (
+                <div className="flex items-center gap-1 bg-amber-50/80 p-0.5 rounded-lg border border-amber-300/80 text-xs shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => reviewFilter.onChange('due')}
+                    className={`px-2 py-1 rounded-md transition font-medium flex items-center gap-1 ${
+                      reviewFilter.current === 'due'
+                        ? 'bg-amber-800 text-white shadow-2xs font-bold'
+                        : 'text-amber-900 hover:bg-amber-100/70'
+                    }`}
+                  >
+                    <span>🚨 此时到期 ({reviewFilter.dueCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => reviewFilter.onChange('upcoming')}
+                    className={`px-2 py-1 rounded-md transition font-medium flex items-center gap-1 ${
+                      reviewFilter.current === 'upcoming'
+                        ? 'bg-indigo-700 text-white shadow-2xs font-bold'
+                        : 'text-indigo-900 hover:bg-indigo-100/70'
+                    }`}
+                    title="展示艾宾浩斯下一轮要背的单词，提前展示预习"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-200" />
+                    <span>下一轮提前看 ({reviewFilter.upcomingCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => reviewFilter.onChange('all')}
+                    className={`px-2 py-1 rounded-md transition font-medium ${
+                      reviewFilter.current === 'all'
+                        ? 'bg-white text-stone-900 shadow-2xs font-bold'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    全部 ({reviewFilter.allCount})
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-center gap-1 bg-stone-100/90 p-0.5 rounded-lg border border-stone-200/80">
+                <button
+                  onClick={() => onChangeRecallMode('en-to-cn')}
+                  className={`px-2 py-1 text-xs rounded-md transition font-medium ${
+                    recallMode === 'en-to-cn'
+                      ? 'bg-white text-stone-900 shadow-2xs font-semibold'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                  title="看英文，回忆中文释义"
+                >
+                  英译中 (遮义)
+                </button>
+                <button
+                  onClick={() => onChangeRecallMode('cn-to-en')}
+                  className={`px-2 py-1 text-xs rounded-md transition font-medium ${
+                    recallMode === 'cn-to-en'
+                      ? 'bg-white text-stone-900 shadow-2xs font-semibold'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                  title="看中文，回忆英文拼写"
+                >
+                  中译英 (遮词)
+                </button>
+                <button
+                  onClick={() => onChangeRecallMode('cloze')}
+                  className={`px-2 py-1 text-xs rounded-md transition font-medium ${
+                    recallMode === 'cloze'
+                      ? 'bg-white text-stone-900 shadow-2xs font-semibold'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                  title="真题例句挖空实战"
+                >
+                  真题挖空
+                </button>
+              </div>
             </div>
 
             {/* Right: Column Switcher & Pagination Controls */}
@@ -253,6 +305,18 @@ export const A4Paper: React.FC<A4PaperProps> = ({
                   ✕
                 </button>
               )}
+            </div>
+          )}
+
+          {/* 艾宾浩斯下一轮提前展示预习提示 */}
+          {reviewFilter && (reviewFilter.current === 'upcoming' || reviewFilter.dueCount === 0) && (
+            <div className="mt-3 p-3 rounded-lg bg-indigo-50/90 border border-indigo-200/90 text-indigo-950 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>
+                  <strong>艾宾浩斯下一轮提前展示</strong>：此处提前为您列出下一轮建议背诵的单词（尚未到期），仅供通览预习与加深印象，<strong>无需焦虑打卡</strong>。
+                </span>
+              </div>
             </div>
           )}
 

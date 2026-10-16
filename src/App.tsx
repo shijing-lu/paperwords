@@ -218,12 +218,39 @@ export const App: React.FC = () => {
     return d.getTime();
   }, []);
 
-  // (a) 到期复习词汇：已学过的词且已到期
+  // 艾宾浩斯复习子分类控制 ('due': 此时到期, 'upcoming': 下一轮提前展示, 'all': 全部排期)
+  const [reviewSubTab, setReviewSubTab] = useState<'due' | 'upcoming' | 'all'>('due');
+
+  // (a1) 到期复习词汇：已学过的词且已到期 (此时此刻需要复习)
   const dueReviewWords = useMemo(() => {
     return allWordsInDeck
       .filter((w) => w.reviewState.status !== 'new' && w.reviewState.nextReviewDate <= now)
       .sort((a, b) => a.reviewState.nextReviewDate - b.reviewState.nextReviewDate);
   }, [allWordsInDeck, now]);
+
+  // (a2) 下一轮即将到期词汇：已学过的词，尚未到期（提前展示预习，并不是说现在就要背）
+  const upcomingReviewWords = useMemo(() => {
+    return allWordsInDeck
+      .filter((w) => w.reviewState.status !== 'new' && w.reviewState.nextReviewDate > now)
+      .sort((a, b) => a.reviewState.nextReviewDate - b.reviewState.nextReviewDate);
+  }, [allWordsInDeck, now]);
+
+  // (a3) 全部复习排期词汇
+  const allReviewWords = useMemo(() => {
+    return allWordsInDeck
+      .filter((w) => w.reviewState.status !== 'new')
+      .sort((a, b) => a.reviewState.nextReviewDate - b.reviewState.nextReviewDate);
+  }, [allWordsInDeck]);
+
+  // 实际生效的复习子 Tab（若此时到期为 0 且有下一轮单词，系统自动切换为下一轮提前展示预习）
+  const effectiveReviewSubTab = useMemo<'due' | 'upcoming' | 'all'>(() => {
+    if (reviewSubTab === 'all') return 'all';
+    if (reviewSubTab === 'upcoming') return 'upcoming';
+    if (dueReviewWords.length === 0 && upcomingReviewWords.length > 0) {
+      return 'upcoming';
+    }
+    return 'due';
+  }, [reviewSubTab, dueReviewWords.length, upcomingReviewWords.length]);
 
   // (b) 生词重点池：模糊或生疏
   const stumbleWords = useMemo(() => {
@@ -324,14 +351,32 @@ export const App: React.FC = () => {
     }
 
     if (activeTab === 'review') {
-      const pages = Math.max(1, Math.ceil(dueReviewWords.length / wordsPerPage));
+      const sourceWords =
+        effectiveReviewSubTab === 'upcoming'
+          ? upcomingReviewWords
+          : effectiveReviewSubTab === 'all'
+          ? allReviewWords
+          : dueReviewWords;
+
+      const pages = Math.max(1, Math.ceil(sourceWords.length / wordsPerPage));
       const start = (currentListIndex - 1) * wordsPerPage;
-      const slice = dueReviewWords.slice(start, start + wordsPerPage);
+      const slice = sourceWords.slice(start, start + wordsPerPage);
+
+      let title = '艾宾浩斯到期复习单';
+      if (effectiveReviewSubTab === 'upcoming') {
+        title = '艾宾浩斯曲线 · 下一轮即将复习 (提前展示预习)';
+      } else if (effectiveReviewSubTab === 'all') {
+        title = `艾宾浩斯复习总队列 (共 ${allReviewWords.length} 词)`;
+      }
+
       return {
         activeWords: slice,
         totalPages: pages,
-        pageTitle: '艾宾浩斯到期复习单',
-        emptyMessage: '当前周期复习已全部完成！累计达到提醒阈值后将自动弹出强提醒。',
+        pageTitle: title,
+        emptyMessage:
+          effectiveReviewSubTab === 'upcoming'
+            ? '暂无下一轮排期的复习单词，可前往【今日新学】开启今日词汇学习！'
+            : '当前周期复习已全部完成！累计达到提醒阈值后将自动弹出强提醒。',
       };
     }
 
@@ -769,17 +814,35 @@ export const App: React.FC = () => {
     return articles.find((a) => a.id === currentArticleId) || articles[0] || DEFAULT_ARTICLES[0];
   }, [articles, currentArticleId]);
 
-  // 提取供 AI 创作文章使用的“今日重点新词候选”
+  // 提取供 AI 创作文章使用的“今日所学单词”，严格按“反复背诵频次”降序排列
   const candidateWordsForAI = useMemo(() => {
-    if (dailySession && dailySession.targetWordIds && dailySession.targetWordIds.length > 0) {
-      const set = new Set(dailySession.targetWordIds);
-      const matched = allWordsInDeck.filter((w) => set.has(w.id));
-      if (matched.length > 0) return matched;
+    const sessionWordIds = new Set(dailySession?.targetWordIds || []);
+    let pool = allWordsInDeck.filter((w) => {
+      const hasTodayEncounters = (w.stats?.todayEncounters || 0) > 0;
+      const reviewedToday = w.reviewState.status !== 'new' && w.reviewState.lastReviewDate >= todayStart;
+      const inSession = sessionWordIds.has(w.id);
+      return hasTodayEncounters || reviewedToday || inSession;
+    });
+
+    // 如果今日还没有任何打标记录，则取当前单元词或当前词库的所有词
+    if (pool.length === 0) {
+      pool = activeWords.length > 0 ? activeWords : allWordsInDeck.slice(0, 50);
     }
-    const studiedToday = allWordsInDeck.filter((w) => (w.stats?.todayEncounters || 0) > 0);
-    if (studiedToday.length > 0) return studiedToday;
-    return activeWords.length > 0 ? activeWords : allWordsInDeck.slice(0, 20);
-  }, [dailySession, allWordsInDeck, activeWords]);
+
+    // 严格按“反复背诵频次”从高到低排序：
+    // 今日背诵次数 (todayEncounters) * 10 + 历史总次数 (totalEncounters) * 2 + 生疏难词加权
+    return pool.slice().sort((a, b) => {
+      const scoreA =
+        (a.stats?.todayEncounters || 0) * 10 +
+        (a.stats?.totalEncounters || 0) * 2 +
+        (a.reviewState.lastRating === 3 ? 5 : a.reviewState.lastRating === 2 ? 3 : 0);
+      const scoreB =
+        (b.stats?.todayEncounters || 0) * 10 +
+        (b.stats?.totalEncounters || 0) * 2 +
+        (b.reviewState.lastRating === 3 ? 5 : b.reviewState.lastRating === 2 ? 3 : 0);
+      return scoreB - scoreA;
+    });
+  }, [allWordsInDeck, dailySession, todayStart, activeWords]);
 
   // 全局快捷键注册
   useHotkeys({
@@ -911,6 +974,21 @@ export const App: React.FC = () => {
               setActiveTab('review');
               setCurrentListIndex(1);
             }}
+            reviewFilter={
+              activeTab === 'review'
+                ? {
+                    current: effectiveReviewSubTab,
+                    dueCount: dueReviewWords.length,
+                    upcomingCount: upcomingReviewWords.length,
+                    allCount: allReviewWords.length,
+                    onChange: (val) => {
+                      setReviewSubTab(val);
+                      setCurrentListIndex(1);
+                      setActiveIndex(0);
+                    },
+                  }
+                : undefined
+            }
           />
         )}
       </main>

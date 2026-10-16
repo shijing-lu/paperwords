@@ -210,23 +210,41 @@ export interface AIGeneratedArticleResult {
 
 /**
  * 功能 2：根据今日新学/复习的单词，让 AI 编织一篇自然流畅的高质量精读文章
+ * 支持自定义单词数量 (20词、50词、甚至 200 词长篇宏大巨著)
  */
 export async function aiGenerateArticleFromWords(
   words: string[],
   topicPreference?: string
 ): Promise<AIGeneratedArticleResult> {
-  const wordListStr = words.slice(0, 30).join(', ');
+  const wordCount = words.length;
+  const wordListStr = words.join(', ');
   const topic = topicPreference || '考研与外刊学术风格（关于科技、社会、心理学或经济探索）';
 
-  const prompt = `你是一位顶尖的英语外刊专栏作家与考研命题专家。
-现有以下重点英语单词需要学习者通过语境精读来强化记忆：
-【目标生词列表】：${wordListStr}
+  // 根据选择的单词数量，动态调整推荐文章长度和段落规模
+  let targetLengthHint = '300 ~ 500 词左右（分为 3-4 个严密段落）';
+  let timeoutMs = 45000;
 
-请撰写一篇长度在 250 ~ 400 词左右的英文短文，满足以下严苛要求：
-1. 风格：类似《经济学人》(The Economist)、《科学美国人》(Scientific American) 或考研英语一真题阅读；
+  if (wordCount > 100) {
+    targetLengthHint = `2000 ~ 3500 词左右的长篇宏大外刊特写/学术综述（分为多个章节与 8-15 个详细段落，必须全力将全部 ${wordCount} 个目标单词自然融汇入文中）`;
+    timeoutMs = 150000; // 2.5分钟超时
+  } else if (wordCount > 40) {
+    targetLengthHint = `800 ~ 1500 词左右的深度外刊专题报道（分为 5-8 个段落，充分展开论述以自然容纳所有 ${wordCount} 个单词）`;
+    timeoutMs = 90000;
+  } else if (wordCount > 20) {
+    targetLengthHint = `500 ~ 800 词左右的完整社论（分为 4-6 个段落，逻辑层层递进并贯穿所有 ${wordCount} 个单词）`;
+    timeoutMs = 60000;
+  }
+
+  const prompt = `你是一位顶尖的英语外刊专栏作家与考研命题专家。
+现有学习者提供了以下【${wordCount} 个核心英语生词】需要通过语境精读来强化记忆：
+【目标生词列表（共 ${wordCount} 词）】：
+${wordListStr}
+
+请撰写一篇英文文章，满足以下严苛要求：
+1. 风格：类似《经济学人》(The Economist)、《科学美国人》(Scientific American) 或考研英语一长篇真题阅读；
 2. 主题：${topic}；
-3. 将上述【目标生词列表】中的单词自然融洽、地道地穿插在文章各处，逻辑严密，语境饱满，杜绝生硬堆砌；
-4. 必须输出严格合法的 JSON 对象，不要输出 markdown 代码块外的内容。规范格式如下：
+3. 篇幅长度与结构：${targetLengthHint}。文章必须逻辑严密、论据丰富、地道流畅，杜绝生硬堆砌；
+4. 必须输出严格合法的 JSON 对象，不要输出任何多余的说明文字或 markdown 外部闲话。规范格式如下：
 {
   "title": "英文文章标题",
   "source": "AI语境串记·外刊专栏",
@@ -237,7 +255,7 @@ export async function aiGenerateArticleFromWords(
   const responseText = await callAIChat([
     { role: 'system', content: 'You are an elite editorial writer and English educator. Output strict JSON.' },
     { role: 'user', content: prompt },
-  ], { temperature: 0.7 });
+  ], { temperature: 0.7, timeoutMs });
 
   const cleaned = cleanJsonOutput(responseText);
   const parsed = JSON.parse(cleaned);

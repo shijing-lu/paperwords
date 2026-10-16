@@ -87,6 +87,37 @@ export const WordRow: React.FC<WordRowProps> = ({
     return null;
   };
 
+  // 艾宾浩斯下一轮复习提前展示标签
+  const getUpcomingBadge = () => {
+    if (word.reviewState.status === 'new' || !word.reviewState.nextReviewDate) return null;
+    const diffMs = word.reviewState.nextReviewDate - Date.now();
+    if (diffMs <= 0) return null; // 已到期无需显示预习倒计时，属于此时已到期
+
+    let timeText = '';
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 60) {
+      timeText = `${Math.max(1, mins)}分钟后`;
+    } else {
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) {
+        timeText = `${hours}小时后`;
+      } else {
+        const days = Math.floor(hours / 24);
+        timeText = days === 1 ? '明天' : days === 2 ? '后天' : `${days}天后`;
+      }
+    }
+
+    return (
+      <span
+        className="inline-flex items-center gap-0.5 text-[9px] font-mono font-medium text-indigo-700 bg-indigo-50/90 px-1.5 py-0.2 rounded border border-indigo-200/80 shrink-0"
+        title={`艾宾浩斯下一轮建议复习时间: ${new Date(word.reviewState.nextReviewDate).toLocaleString()} (提前展示)`}
+      >
+        <span>⏳</span>
+        <span>下一轮: {timeText}</span>
+      </span>
+    );
+  };
+
   // 生成真题挖空句子
   const getClozeSentence = () => {
     if (!word.examples || word.examples.length === 0) return null;
@@ -171,6 +202,7 @@ export const WordRow: React.FC<WordRowProps> = ({
               {heatmap.badgeText}
             </span>
           )}
+          {getUpcomingBadge()}
           {getStatusBadge()}
           <button
             onClick={handlePronounce}
