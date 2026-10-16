@@ -17,7 +17,7 @@ import { speechEngine } from '../../engine/speech';
 import { soundEffects } from '../../engine/soundEffects';
 import { translateSentence } from '../../engine/translator';
 import { aiAnalyzeSentenceSyntax, isAIConfigured } from '../../engine/ai';
-import { WordPopover } from './WordPopover';
+import { WordPopover, type WordTargetRect } from './WordPopover';
 
 interface ReadingReaderProps {
   article: ArticleItem;
@@ -47,7 +47,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
   const [popoverData, setPopoverData] = useState<{
     word: string;
     matchedWordItem?: WordItem;
-    position: { x: number; y: number };
+    targetRect: WordTargetRect;
   } | null>(null);
 
   // 1. Build rapid Map lookup for deck words
@@ -216,11 +216,18 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
     e.stopPropagation();
     if (!token.isWord) return;
 
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setPopoverData({
       word: token.text,
       matchedWordItem: token.matchedWord,
-      position: { x: rect.left + rect.width / 2, y: rect.bottom + window.scrollY },
+      targetRect: {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      },
     });
   };
 
@@ -612,7 +619,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
         <WordPopover
           word={popoverData.word}
           matchedWordItem={popoverData.matchedWordItem}
-          position={popoverData.position}
+          targetRect={popoverData.targetRect}
           onClose={() => setPopoverData(null)}
           onAddToDeck={onAddWordToDeck}
           isInDeck={wordMap.has(popoverData.word.toLowerCase())}
