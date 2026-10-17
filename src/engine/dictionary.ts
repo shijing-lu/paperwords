@@ -64,10 +64,15 @@ export async function loadDictionary(): Promise<Map<string, DictEntry>> {
 /**
  * Fetch online definition from free dictionary services if local dictionary misses
  */
-async function fetchOnlineDefinition(word: string): Promise<DictLookupResult | null> {
+async function fetchOnlineDefinition(word: string, timeoutMs = 1800): Promise<DictLookupResult | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    // 1. Try Free Dictionary API (English definitions and phonetics)
-    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+    // 1. Try Free Dictionary API (English definitions and phonetics) with strict timeout
+    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
     if (!res.ok) return null;
     const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) return null;
@@ -105,6 +110,7 @@ async function fetchOnlineDefinition(word: string): Promise<DictLookupResult | n
       source: 'online',
     };
   } catch (err) {
+    clearTimeout(timer);
     return null;
   }
 }
@@ -117,7 +123,7 @@ async function fetchOnlineDefinition(word: string): Promise<DictLookupResult | n
  * 4. Search IndexedDB cache
  * 5. Search online fallback
  */
-export async function lookupDictionary(rawWord: string): Promise<DictLookupResult | null> {
+async function doLookupDictionary(rawWord: string): Promise<DictLookupResult | null> {
   const cleaned = rawWord.replace(/^[^\w]+|[^\w]+$/g, '').trim().toLowerCase();
   if (!cleaned) return null;
 
@@ -181,4 +187,22 @@ export async function lookupDictionary(rawWord: string): Promise<DictLookupResul
   }
 
   return null;
+}
+
+/**
+ * 带有 2.5 秒超时熔断保护的对外查询接口
+ * 保证如果词库未收录或网络延迟，至多等待 2~3 秒即返回，避免卡在检索中
+ */
+export async function lookupDictionary(rawWord: string, maxWaitMs = 2500): Promise<DictLookupResult | null> {
+  let timer: any;
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), maxWaitMs);
+  });
+
+  try {
+    const res = await Promise.race([doLookupDictionary(rawWord), timeoutPromise]);
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
 }

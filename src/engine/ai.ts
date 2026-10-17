@@ -322,3 +322,50 @@ ${context ? `\n【上下文意境】：\n"${context.slice(0, 300)}..."` : ''}
     summaryTranslation: String(parsed.summaryTranslation || '').trim(),
   };
 }
+
+export interface AIWordTranslationResult {
+  word: string;
+  lemma?: string;
+  phonetic?: string;
+  pos?: string;
+  definition: string;
+}
+
+/**
+ * 功能 4：AI 智能单词翻译与语境词义解析
+ * 当本地词典与在线词典未收录时，调用 AI 快速解析词义、音标、词性及原形
+ */
+export async function aiTranslateWord(
+  rawWord: string,
+  contextSentence?: string
+): Promise<AIWordTranslationResult> {
+  const cleaned = rawWord.replace(/^[^\w]+|[^\w]+$/g, '').trim();
+  const prompt = `请对英文单词或短语 "${cleaned}" 进行专业词典级权威中文释义。${
+    contextSentence ? `\n该词出现在以下句子语境中：\n"${contextSentence}"\n请重点结合此句意，给出最贴切精准的释义。` : ''
+  }
+
+请务必输出严格合法的 JSON 对象，不要输出任何额外的 markdown 标签或对话文字：
+{
+  "word": "${cleaned}",
+  "lemma": "该词的原形（如复数转单数、过去式转现在式；若本身已是原形则与word一致）",
+  "phonetic": "/国际音标/",
+  "pos": "词性缩写（如 n. / v. / adj. / adv.）",
+  "definition": "精炼准确的中文释义（主要含义，多个含义可用分号隔开）"
+}`;
+
+  const responseText = await callAIChat([
+    { role: 'system', content: 'You are a precise English-Chinese dictionary and linguistic expert. Output valid JSON object only.' },
+    { role: 'user', content: prompt },
+  ], { temperature: 0.2, timeoutMs: 15000 });
+
+  const cleanedJson = cleanJsonOutput(responseText);
+  const parsed = JSON.parse(cleanedJson);
+
+  return {
+    word: String(parsed.word || cleaned).trim(),
+    lemma: parsed.lemma ? String(parsed.lemma).trim() : undefined,
+    phonetic: parsed.phonetic ? String(parsed.phonetic).trim() : undefined,
+    pos: parsed.pos ? String(parsed.pos).trim() : undefined,
+    definition: String(parsed.definition || '暂无释义').trim(),
+  };
+}

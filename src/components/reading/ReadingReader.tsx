@@ -48,6 +48,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
     word: string;
     matchedWordItem?: WordItem;
     targetRect: WordTargetRect;
+    contextSentence?: string;
   } | null>(null);
 
   // 1. Build rapid Map lookup for deck words
@@ -212,7 +213,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [allSentences, activeSentenceIdx, expandedTranslations]);
 
-  const handleWordClick = (e: React.MouseEvent, token: WordToken) => {
+  const handleWordClick = (e: React.MouseEvent, token: WordToken, sentenceText?: string) => {
     e.stopPropagation();
     if (!token.isWord) return;
 
@@ -220,6 +221,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
     setPopoverData({
       word: token.text,
       matchedWordItem: token.matchedWord,
+      contextSentence: sentenceText,
       targetRect: {
         left: rect.left,
         top: rect.top,
@@ -359,7 +361,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
                               return (
                                 <span
                                   key={tIdx}
-                                  onClick={(e) => handleWordClick(e, token)}
+                                  onClick={(e) => handleWordClick(e, token, sent.text)}
                                   className="font-mono-code font-bold bg-stone-800 text-stone-200 hover:text-amber-300 hover:bg-stone-900 px-1 py-0.2 rounded text-[13px] mx-0.5 cursor-pointer shadow-2xs"
                                   title="点击揭示原词释义"
                                 >
@@ -372,7 +374,7 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
                             return (
                               <span
                                 key={tIdx}
-                                onClick={(e) => handleWordClick(e, token)}
+                                onClick={(e) => handleWordClick(e, token, sent.text)}
                                 className={`cursor-pointer transition-colors ${
                                   isTarget
                                     ? 'underline decoration-amber-500 decoration-2 underline-offset-3 font-semibold text-amber-950 hover:bg-amber-200/60 rounded px-0.5'
@@ -619,10 +621,12 @@ export const ReadingReader: React.FC<ReadingReaderProps> = ({
         <WordPopover
           word={popoverData.word}
           matchedWordItem={popoverData.matchedWordItem}
+          contextSentence={popoverData.contextSentence}
           targetRect={popoverData.targetRect}
           onClose={() => setPopoverData(null)}
           onAddToDeck={onAddWordToDeck}
           isInDeck={wordMap.has(popoverData.word.toLowerCase())}
+          onOpenAISettings={onOpenAISettings}
         />
       )}
     </div>

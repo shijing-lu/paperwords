@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Volume2, Plus, Check, X, Loader2, Sparkles, Tag } from 'lucide-react';
+import { Volume2, Plus, Check, X, Loader2, Sparkles, Tag, Bot } from 'lucide-react';
 import type { WordItem } from '../../types';
 import { speechEngine } from '../../engine/speech';
 import { lookupDictionary, type DictLookupResult } from '../../engine/dictionary';
+import { aiTranslateWord, isAIConfigured, type AIWordTranslationResult } from '../../engine/ai';
+import { db } from '../../db';
 
 export interface WordTargetRect {
   left: number;
@@ -17,32 +19,44 @@ export interface WordTargetRect {
 interface WordPopoverProps {
   word: string;
   matchedWordItem?: WordItem;
+  contextSentence?: string;
   targetRect?: WordTargetRect | null;
   position?: { x: number; y: number } | null;
   onClose: () => void;
   onAddToDeck: (word: string, definition: string, phonetic?: string) => void;
   isInDeck: boolean;
+  onOpenAISettings?: (notice?: string) => void;
 }
 
 export const WordPopover: React.FC<WordPopoverProps> = ({
   word,
   matchedWordItem,
+  contextSentence,
   targetRect,
   position,
   onClose,
   onAddToDeck,
   isInDeck,
+  onOpenAISettings,
 }) => {
   const [dictResult, setDictResult] = useState<DictLookupResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // AI 单词翻译状态
+  const [aiResult, setAiResult] = useState<AIWordTranslationResult | null>(null);
+  const [isAILoading, setIsAILoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   useEffect(() => {
     let isCancelled = false;
+    setAiResult(null);
+    setAiError(null);
 
     async function query() {
       setIsLoading(true);
       try {
-        const res = await lookupDictionary(word);
+        // 最多检索 2.5 秒，超时自动返回 null，杜绝一直卡在检索中
+        const res = await lookupDictionary(word, 2500);
         if (!isCancelled) {
           setDictResult(res);
         }
@@ -126,15 +140,55 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
 
   if (!popoverPos) return null;
 
-  const handlePronounce = () => {
-    speechEngine.speak(dictResult?.lemma || word);
+  // 触发 AI 翻译
+  const handleAITranslate = async () => {
+    if (!isAIConfigured()) {
+      onOpenAISettings?.('AI 单词翻译需配置 API Key，请先完成配置');
+      return;
+    }
+
+    setIsAILoading(true);
+    setAiError(null);
+
+    try {
+      const result = await aiTranslateWord(word, contextSentence);
+      setAiResult(result);
+
+      // 缓存入本地数据库，下次相同单词直接离线秒显
+      await db.dictionaryCache.put({
+        word: (result.lemma || result.word || word).toLowerCase(),
+        phonetic: result.phonetic || '',
+        pos: result.pos || '',
+        definition: result.definition,
+        updatedAt: Date.now(),
+      });
+    } catch (err: any) {
+      console.error('AI Translate error:', err);
+      setAiError(err.message || 'AI 翻译失败，请重试');
+    } finally {
+      setIsAILoading(false);
+    }
   };
 
-  const finalPhonetic = matchedWordItem?.phonetic || dictResult?.phonetic;
+  const handlePronounce = () => {
+    speechEngine.speak(aiResult?.lemma || dictResult?.lemma || word);
+  };
+
+  // 综合计算有效释义与展示数据
+  const finalWord = aiResult?.word || dictResult?.word || word;
+  const finalLemma = aiResult?.lemma || dictResult?.lemma;
+  const finalPhonetic = matchedWordItem?.phonetic || aiResult?.phonetic || dictResult?.phonetic;
+  const finalPos = matchedWordItem?.pos || aiResult?.pos || dictResult?.pos;
+
+  const hasDefinition = Boolean(
+    matchedWordItem?.definition || aiResult?.definition || dictResult?.definition
+  );
+
   const finalDefinition =
     matchedWordItem?.definition ||
+    aiResult?.definition ||
     dictResult?.definition ||
-    (isLoading ? '正在权威词库与形态库中检索...' : '未收录此词条');
+    '';
 
   return (
     <AnimatePresence>
@@ -160,11 +214,11 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
             <div>
               <div className="flex items-baseline flex-wrap gap-1.5">
                 <span className="font-bold text-sm text-stone-900 font-sans tracking-tight">
-                  {word}
+                  {finalWord}
                 </span>
-                {dictResult?.lemma && dictResult.lemma.toLowerCase() !== word.toLowerCase() && (
+                {finalLemma && finalLemma.toLowerCase() !== finalWord.toLowerCase() && (
                   <span className="text-[10px] font-mono px-1.5 py-0.2 bg-amber-50 text-amber-800 rounded border border-amber-200">
-                    原形: {dictResult.lemma}
+                    原形: {finalLemma}
                   </span>
                 )}
                 {finalPhonetic && (
@@ -209,23 +263,71 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
             </div>
           )}
 
-          {/* Definition */}
-          <div className="py-2.5 text-stone-700 leading-relaxed min-h-[40px] flex items-center text-xs">
-            {isLoading && !dictResult && !matchedWordItem ? (
+          {/* Definition / AI Translate Box */}
+          <div className="py-2.5 text-stone-700 leading-relaxed min-h-[44px] flex items-center text-xs">
+            {isLoading ? (
+              // 1. 正在快速检索中 (2~3 秒内)
               <div className="flex items-center gap-1.5 text-stone-400 italic">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-700" />
-                <span>检索词典与词形还原中...</span>
+                <span>词典检索中...</span>
+              </div>
+            ) : hasDefinition ? (
+              // 2. 已展示出释义（来自词典或已由 AI 翻译成功）
+              <div className="w-full">
+                <div className="flex items-start justify-between gap-1.5">
+                  <div className="flex-1">
+                    {finalPos && (
+                      <span className="font-serif italic font-semibold text-stone-500 mr-1.5">
+                        {finalPos}
+                      </span>
+                    )}
+                    <span className="font-sans font-medium text-stone-900 leading-normal">
+                      {finalDefinition}
+                    </span>
+                  </div>
+
+                  {aiResult && (
+                    <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-semibold font-mono">
+                      <Sparkles className="w-2.5 h-2.5 text-amber-700" />
+                      AI 释义
+                    </span>
+                  )}
+                </div>
               </div>
             ) : (
-              <div>
-                {matchedWordItem?.pos && (
-                  <span className="font-serif italic font-semibold text-stone-500 mr-1.5">
-                    {matchedWordItem.pos}
-                  </span>
+              // 3. 词典未收录/没显示出来：方框中醒目显示“AI翻译”按钮
+              <div className="w-full py-0.5">
+                <div className="bg-amber-50/80 border border-amber-200/90 rounded-lg p-2.5 flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="text-[11px] text-stone-600 font-medium">
+                    词库暂未收录
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAITranslate}
+                    disabled={isAILoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-800 hover:bg-amber-900 active:scale-98 disabled:opacity-60 text-white rounded-md text-xs font-semibold shadow-2xs transition cursor-pointer"
+                    title="点击调用 AI 解析该生词的准确释义与语境含义"
+                  >
+                    {isAILoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-200" />
+                        <span>AI 解析中...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                        <span>AI 翻译</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {aiError && (
+                  <div className="mt-1.5 text-[10px] text-rose-700 bg-rose-50 px-2 py-1 rounded border border-rose-200">
+                    {aiError}
+                  </div>
                 )}
-                <span className="font-sans font-medium text-stone-900 leading-normal">
-                  {finalDefinition}
-                </span>
               </div>
             )}
           </div>
@@ -240,27 +342,33 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
             ) : (
               <button
                 type="button"
-                disabled={isLoading && !dictResult && !matchedWordItem}
+                disabled={isLoading || (!hasDefinition && !aiResult)}
                 onClick={() => {
-                  const targetWord = dictResult?.lemma || word;
+                  const targetWord = finalLemma || finalWord || word;
                   const defToStore =
                     finalDefinition && finalDefinition !== '未收录此词条'
                       ? finalDefinition
                       : '阅读提取生词';
                   onAddToDeck(targetWord, defToStore, finalPhonetic);
                 }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-800 hover:bg-amber-900 disabled:opacity-50 text-white rounded-md text-[11px] font-medium shadow-2xs transition"
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-800 hover:bg-amber-900 disabled:opacity-50 text-white rounded-md text-[11px] font-medium shadow-2xs transition cursor-pointer"
               >
                 <Plus className="w-3 h-3" />
                 收入艾宾浩斯复习池
               </button>
             )}
 
-            {dictResult?.source && (
-              <span className="text-[10px] text-stone-400 font-serif">
-                {dictResult.source === 'local' ? '本地词典' : dictResult.source === 'cache' ? '缓存' : '在线检索'}
-              </span>
-            )}
+            <span className="text-[10px] text-stone-400 font-serif">
+              {aiResult
+                ? 'AI 智能解析'
+                : dictResult?.source === 'local'
+                ? '本地词典'
+                : dictResult?.source === 'cache'
+                ? '本地缓存'
+                : dictResult?.source === 'online'
+                ? '在线检索'
+                : ''}
+            </span>
           </div>
         </motion.div>
       </div>
