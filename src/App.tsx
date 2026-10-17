@@ -17,9 +17,10 @@ import { calculateNextReviewState, sanitizeCorruptedWordReviews } from './engine
 import { speechEngine } from './engine/speech';
 import { notificationEngine } from './engine/notifications';
 import { soundEffects } from './engine/soundEffects';
-import { sessionManager, type DailyLearningSession } from './engine/sessionManager';
+import { sessionManager, type DailyLearningSession, type GroupConfig } from './engine/sessionManager';
 import { recordWordEncounter } from './engine/heatmap';
 import { getOrInitCurrentUser } from './engine/auth';
+import { GroupSettingsModal } from './components/GroupSettingsModal';
 import { Header } from './components/Header';
 import { BentoDashboard } from './components/BentoDashboard';
 import { A4Paper } from './components/paper/A4Paper';
@@ -102,6 +103,7 @@ export const App: React.FC = () => {
   const [isHotkeysOpen, setIsHotkeysOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
+  const [isGroupSettingsOpen, setIsGroupSettingsOpen] = useState(false);
   const [isArticleDrawerOpen, setIsArticleDrawerOpen] = useState(false);
   const [reinforceModalData, setReinforceModalData] = useState<{
     word: WordItem;
@@ -342,6 +344,23 @@ export const App: React.FC = () => {
     setActiveIndex(0);
   }, [currentDeckId, allWordsInDeck, dailyTarget, currentUser]);
 
+  // 自定义重设/应用今日分组配置
+  const handleApplyGroupConfig = useCallback(
+    (config: GroupConfig) => {
+      if (!currentDeckId || !currentUser) return;
+      if (dailySession) {
+        const updated = sessionManager.reconfigureGroups(dailySession, config, currentUser.id);
+        setDailySession(updated);
+      } else {
+        sessionManager.saveGroupPref(config);
+      }
+      setCurrentListIndex(1);
+      setActiveIndex(0);
+      setRoundAlert(null);
+    },
+    [currentDeckId, currentUser, dailySession]
+  );
+
   // (d) 计算当前视图展示的单词列表与分页
   const { activeWords, totalPages, pageTitle, emptyMessage } = useMemo(() => {
     if (activeTab === 'today') {
@@ -349,16 +368,27 @@ export const App: React.FC = () => {
       const pages = Math.max(1, Math.ceil(words.length / wordsPerPage));
       const start = (currentListIndex - 1) * wordsPerPage;
       const slice = words.slice(start, start + wordsPerPage);
+
+      let title = '今日新学计划';
+      if (dailySession) {
+        if (dailySession.stage === 'consolidation') {
+          title = `今日新学 · 全体合并大复习 (第 ${dailySession.consolidation.currentRound} 轮)`;
+        } else if (dailySession.groups && dailySession.groups.length > 1) {
+          const currentGroup = dailySession.groups[dailySession.currentGroupIndex];
+          const groupName = currentGroup?.groupName || `第 ${dailySession.currentGroupIndex + 1} 组`;
+          title = `今日新学 · ${groupName} (第 ${dailySession.currentRound} 轮${dailySession.currentRound > 1 ? '攻坚' : '初筛'})`;
+        } else if (dailySession.currentRound > 1) {
+          title = `今日新学 · 第 ${dailySession.currentRound} 轮硬骨头攻坚`;
+        }
+      }
+
       return {
         activeWords: slice,
         totalPages: pages,
-        pageTitle:
-          dailySession && dailySession.currentRound > 1
-            ? `今日新学 · 第 ${dailySession.currentRound} 轮硬骨头攻坚`
-            : '今日新学计划',
+        pageTitle: title,
         emptyMessage:
           dailySession?.isGraduated
-            ? `🎉 今日新学计划已圆满毕业！全部通过多轮循环淘汰，已推入艾宾浩斯复习日程。`
+            ? `🎉 今日新学计划已圆满毕业！全部通过多轮分组淘汰与全体大复习，已推入艾宾浩斯复习日程。`
             : '词库中暂无待学新词，可导入新词书或前往复习专区！',
       };
     }
@@ -528,7 +558,7 @@ export const App: React.FC = () => {
 
       // 1. 如果是在今日新学中，且会话处于进行中：走多轮递进淘汰引擎
       if (activeTab === 'today' && dailySession && !dailySession.isGraduated) {
-        const { updatedSession, roundFinished, allGraduated } = sessionManager.recordWordRating(
+        const { updatedSession, roundFinished, allGraduated, event } = sessionManager.recordWordRating(
           dailySession,
           wordId,
           rating,
@@ -559,28 +589,38 @@ export const App: React.FC = () => {
 
           soundEffects.playGraduationTone();
           confetti({
-            particleCount: 90,
-            spread: 80,
+            particleCount: 100,
+            spread: 90,
             origin: { y: 0.6 },
             colors: ['#D97706', '#059669', '#2563EB', '#E11D48'],
           });
           setRoundAlert({
             type: 'graduation',
-            text: `🎓 恭喜！今日 ${updatedSession.targetWordIds.length} 词已全部攻克毕业！一轮首通率 ${Math.round((updatedSession.firstPassIds.length / updatedSession.targetWordIds.length) * 100)}%，已全员推入艾宾浩斯复习日程。`,
+            text: event.message || `🎓 恭喜！今日 ${updatedSession.targetWordIds.length} 词已全部攻克毕业！已全员推入艾宾浩斯复习日程。`,
           });
           setActiveIndex(0);
         } else if (roundFinished) {
-          // 顺利进阶到下一轮攻坚
-          soundEffects.playRoundAdvanceTone();
-          confetti({
-            particleCount: 40,
-            spread: 60,
-            origin: { y: 0.7 },
-            colors: ['#D97706', '#F59E0B', '#FBBF24'],
-          });
+          // 顺利进阶到组内下一轮、下一组、或者全体大复习！
+          if (event.type === 'enter_consolidation') {
+            soundEffects.playGraduationTone();
+            confetti({
+              particleCount: 70,
+              spread: 75,
+              origin: { y: 0.65 },
+              colors: ['#2563EB', '#059669', '#D97706'],
+            });
+          } else {
+            soundEffects.playRoundAdvanceTone();
+            confetti({
+              particleCount: 40,
+              spread: 60,
+              origin: { y: 0.7 },
+              colors: ['#D97706', '#F59E0B', '#FBBF24'],
+            });
+          }
           setRoundAlert({
             type: 'advance',
-            text: `🏁 第 ${updatedSession.currentRound - 1} 轮初筛完成！剩余 ${updatedSession.activeQueueIds.length} 个生疏/模糊词已进入【第 ${updatedSession.currentRound} 轮硬骨头攻坚】。继续保持！`,
+            text: event.message,
           });
           setCurrentListIndex(1);
           setActiveIndex(0);
@@ -983,6 +1023,7 @@ export const App: React.FC = () => {
             roundAlert={activeTab === 'today' ? roundAlert : undefined}
             onDismissRoundAlert={() => setRoundAlert(null)}
             onResetSession={handleResetDailySession}
+            onOpenGroupSettings={() => setIsGroupSettingsOpen(true)}
             onGoToReview={() => {
               setActiveTab('review');
               setCurrentListIndex(1);
@@ -1118,6 +1159,16 @@ export const App: React.FC = () => {
 
       {/* 14. Right Floating Sponsor / Catgirl Tip Widget */}
       <SponsorWidget />
+
+      {/* 15. Group Settings Modal (今日新学分组学习配置) */}
+      <GroupSettingsModal
+        isOpen={isGroupSettingsOpen}
+        onClose={() => setIsGroupSettingsOpen(false)}
+        totalWordsCount={dailySession?.targetWordIds.length || dailyTarget}
+        currentConfig={dailySession?.groupConfig || sessionManager.getSavedGroupPref() || { mode: 'bySize', value: 33 }}
+        targetWordIds={dailySession?.targetWordIds || []}
+        onApplyConfig={handleApplyGroupConfig}
+      />
     </div>
   );
 };

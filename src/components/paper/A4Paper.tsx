@@ -12,20 +12,40 @@ import {
   Sparkles,
   RotateCcw,
   AlertCircle,
+  Sliders,
+  Layers,
+  ArrowRight,
 } from 'lucide-react';
 import type { WordItem, ViewMode, ActiveRecallMode, PaperColumns, WordStudyStats } from '../../types';
 import { WordRow } from './WordRow';
 
+export interface SessionGroupBreadcrumb {
+  index: number;
+  name: string;
+  total: number;
+  round: number;
+  isCompleted: boolean;
+  isCurrent: boolean;
+}
+
 export interface SessionProgressInfo {
   currentRound: number;
   totalTarget: number;
-  passedCount: number;
+  passedCount?: number;
   firstPassCount: number;
   firstPassRate: number;
   passRate: number;
   remainingInRound: number;
   nextRoundPending: number;
   isGraduated: boolean;
+  totalGroups?: number;
+  currentGroupIndex?: number;
+  currentGroupName?: string;
+  currentGroupTotal?: number;
+  currentGroupRound?: number;
+  isConsolidation?: boolean;
+  consolidationRound?: number;
+  groups?: SessionGroupBreadcrumb[];
 }
 
 export interface ReviewFilterState {
@@ -60,6 +80,7 @@ interface A4PaperProps {
   roundAlert?: { type: 'advance' | 'graduation'; text: string } | null;
   onDismissRoundAlert?: () => void;
   onResetSession?: () => void;
+  onOpenGroupSettings?: () => void;
   onGoToReview?: () => void;
   reviewFilter?: ReviewFilterState;
 }
@@ -88,6 +109,7 @@ export const A4Paper: React.FC<A4PaperProps> = ({
   roundAlert,
   onDismissRoundAlert,
   onResetSession,
+  onOpenGroupSettings,
   onGoToReview,
   reviewFilter,
 }) => {
@@ -322,64 +344,140 @@ export const A4Paper: React.FC<A4PaperProps> = ({
 
           {/* 今日新学多轮递进攻坚状态栏 */}
           {sessionProgress && !sessionProgress.isGraduated && (
-            <div className="bg-[#FAF7F0] border border-[#E7E2D4] rounded-lg p-2.5 my-3 flex flex-wrap items-center justify-between gap-2.5 text-xs">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  className={`px-2 py-0.5 rounded font-mono font-bold tracking-wide ${
-                    sessionProgress.currentRound === 1
-                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                      : 'bg-rose-100 text-rose-900 border border-rose-300'
-                  }`}
-                >
-                  {sessionProgress.currentRound === 1
-                    ? '🏁 第 1 轮 · 全览初筛'
-                    : `🔥 第 ${sessionProgress.currentRound} 轮 · 硬骨头攻坚`}
-                </span>
-
-                <span className="text-stone-600">
-                  待过筛: <strong className="text-stone-900 font-mono">{sessionProgress.remainingInRound}</strong> 词
-                </span>
-
-                <span className="text-stone-300">|</span>
-
-                <span className="text-stone-600" title="第1轮直接熟练掌握的比例，客观反映基础">
-                  一轮首通率: <strong className="text-amber-800 font-mono">{sessionProgress.firstPassRate}%</strong>
-                  <span className="text-[10px] text-stone-400 ml-1">
-                    ({sessionProgress.firstPassCount}/{sessionProgress.totalTarget})
+            <div className="bg-[#FAF7F0] border border-[#E7E2D4] rounded-lg p-2.5 my-3 text-xs space-y-2">
+              {/* 分组与全体大复习步进导航条 (仅在多组时展示) */}
+              {sessionProgress.groups && sessionProgress.groups.length > 1 && (
+                <div className="flex items-center gap-1.5 flex-wrap pb-2 border-b border-[#E7E2D4]/70">
+                  <span className="text-[10px] text-stone-500 font-medium mr-1 flex items-center gap-1">
+                    <Layers className="w-3 h-3 text-amber-700" />
+                    学习步骤:
                   </span>
-                </span>
-
-                {sessionProgress.nextRoundPending > 0 && (
-                  <span className="text-rose-700 font-medium text-[11px] bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                    下一轮待攻坚: {sessionProgress.nextRoundPending} 词
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-stone-500 text-[11px]">全员闭环通过率:</span>
-                  <div className="w-24 sm:w-32 bg-stone-200 h-2 rounded-full overflow-hidden">
+                  {sessionProgress.groups.map((g) => (
                     <div
-                      className="bg-emerald-600 h-full transition-all duration-300"
-                      style={{ width: `${sessionProgress.passRate}%` }}
-                    />
+                      key={g.index}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono transition ${
+                        g.isCurrent
+                          ? 'bg-amber-100 text-amber-950 font-bold border border-amber-300 ring-1 ring-amber-200'
+                          : g.isCompleted
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium'
+                          : 'bg-stone-100 text-stone-400 border border-stone-200'
+                      }`}
+                    >
+                      <span>{g.name}</span>
+                      <span className="text-[10px] opacity-80">({g.total}词)</span>
+                      {g.isCompleted ? (
+                        <CheckCheck className="w-3 h-3 text-emerald-600 inline ml-0.5" />
+                      ) : g.isCurrent ? (
+                        <span className="text-[10px] text-amber-800 font-bold ml-0.5">
+                          第{g.round}轮
+                        </span>
+                      ) : null}
+                    </div>
+                  ))}
+                  <ArrowRight className="w-3 h-3 text-stone-300 mx-0.5 shrink-0" />
+                  <div
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono transition ${
+                      sessionProgress.isConsolidation
+                        ? 'bg-indigo-100 text-indigo-950 font-bold border border-indigo-300 ring-1 ring-indigo-200'
+                        : 'bg-stone-100 text-stone-400 border border-stone-200'
+                    }`}
+                  >
+                    <span>🏆 全体合并大复习</span>
+                    {sessionProgress.isConsolidation && (
+                      <span className="text-[10px] text-indigo-800 font-bold ml-0.5">
+                        第{sessionProgress.consolidationRound || sessionProgress.currentRound}轮
+                      </span>
+                    )}
                   </div>
-                  <span className="font-mono text-[11px] font-bold text-stone-700">
-                    {sessionProgress.passedCount}/{sessionProgress.totalTarget} ({sessionProgress.passRate}%)
+                </div>
+              )}
+
+              {/* 核心指标与操作栏 */}
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {sessionProgress.isConsolidation ? (
+                    <span className="px-2 py-0.5 rounded font-mono font-bold tracking-wide bg-indigo-100 text-indigo-950 border border-indigo-300">
+                      🏆 全体大复习 · 第 {sessionProgress.consolidationRound || sessionProgress.currentRound} 轮
+                    </span>
+                  ) : (
+                    <>
+                      {sessionProgress.totalGroups && sessionProgress.totalGroups > 1 && (
+                        <span className="px-2 py-0.5 rounded font-mono font-bold tracking-wide bg-amber-50 text-amber-900 border border-amber-200">
+                          {sessionProgress.currentGroupName || `第 ${(sessionProgress.currentGroupIndex ?? 0) + 1} 组`}
+                        </span>
+                      )}
+                      <span
+                        className={`px-2 py-0.5 rounded font-mono font-bold tracking-wide ${
+                          sessionProgress.currentRound === 1
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : 'bg-rose-100 text-rose-900 border border-rose-300'
+                        }`}
+                      >
+                        {sessionProgress.currentRound === 1
+                          ? '🏁 第 1 轮 · 组内初筛'
+                          : `🔥 第 ${sessionProgress.currentRound} 轮 · 组内攻坚`}
+                      </span>
+                    </>
+                  )}
+
+                  <span className="text-stone-600">
+                    待过筛: <strong className="text-stone-900 font-mono">{sessionProgress.remainingInRound}</strong> 词
                   </span>
+
+                  <span className="text-stone-300">|</span>
+
+                  <span className="text-stone-600" title="第1轮直接熟练掌握的比例，客观反映基础">
+                    一轮首通率: <strong className="text-amber-800 font-mono">{sessionProgress.firstPassRate}%</strong>
+                    <span className="text-[10px] text-stone-400 ml-1">
+                      ({sessionProgress.firstPassCount}/{sessionProgress.totalTarget})
+                    </span>
+                  </span>
+
+                  {sessionProgress.nextRoundPending > 0 && (
+                    <span className="text-rose-700 font-medium text-[11px] bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                      下轮待攻坚: {sessionProgress.nextRoundPending} 词
+                    </span>
+                  )}
                 </div>
 
-                {onResetSession && (
-                  <button
-                    onClick={onResetSession}
-                    className="flex items-center gap-1 text-[11px] text-stone-500 hover:text-stone-800 underline underline-offset-2 ml-1"
-                    title="清空当前打卡进度，重新开启 1 轮全览"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    重置今日
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-stone-500 text-[11px]">闭环通过率:</span>
+                    <div className="w-20 sm:w-28 bg-stone-200 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-emerald-600 h-full transition-all duration-300"
+                        style={{ width: `${sessionProgress.passRate}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[11px] font-bold text-stone-700">
+                      {sessionProgress.passRate}%
+                    </span>
+                  </div>
+
+                  {onOpenGroupSettings && (
+                    <button
+                      type="button"
+                      onClick={onOpenGroupSettings}
+                      className="inline-flex items-center gap-1 text-[11px] text-stone-600 hover:text-amber-800 font-medium bg-stone-100 hover:bg-amber-50 px-2 py-0.5 rounded border border-stone-200 hover:border-amber-200 transition"
+                      title="自定义调整每日新词分组大小或组数"
+                    >
+                      <Sliders className="w-3 h-3 text-amber-700" />
+                      <span>分组设置</span>
+                    </button>
+                  )}
+
+                  {onResetSession && (
+                    <button
+                      type="button"
+                      onClick={onResetSession}
+                      className="flex items-center gap-1 text-[11px] text-stone-500 hover:text-stone-800 underline underline-offset-2 ml-0.5"
+                      title="清空当前打卡进度，重新开启 1 轮全览"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      重置
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}

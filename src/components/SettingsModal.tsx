@@ -21,6 +21,7 @@ import {
   Columns4,
   ExternalLink,
 } from 'lucide-react';
+import { sessionManager, type GroupConfig, type GroupMode, getDefaultGroupConfig } from '../engine/sessionManager';
 import { notificationEngine } from '../engine/notifications';
 import { soundEffects } from '../engine/soundEffects';
 import {
@@ -79,6 +80,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [testSent, setTestSent] = useState(false);
   const [customDailyInput, setCustomDailyInput] = useState(String(dailyTarget));
   const [customPageWordsInput, setCustomPageWordsInput] = useState(String(wordsPerPage));
+  const [groupConfig, setGroupConfig] = useState<GroupConfig>(() => {
+    return sessionManager.getSavedGroupPref() || getDefaultGroupConfig(dailyTarget);
+  });
 
   // AI 状态
   const [aiConfig, setAiConfig] = useState<AiConfig>(getAiConfig());
@@ -309,6 +313,98 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           className="w-12 bg-transparent text-center font-mono-code text-xs font-bold text-stone-900 outline-hidden"
                         />
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Setting 1.5: 今日新学分组学习机制 (Group Learning) */}
+                  <div className="p-4 bg-white/90 rounded-xl border border-stone-200 shadow-2xs space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs flex items-center gap-1.5 text-stone-900">
+                        <Layers className="w-4 h-4 text-amber-700" />
+                        今日新学分组学习机制 (Group Learning)
+                      </span>
+                      <span className="font-mono-code font-bold text-amber-800 text-xs">
+                        {groupConfig.mode === 'bySize' ? `每组 ${groupConfig.value} 词` : `分 ${groupConfig.value} 组`}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-stone-500 leading-relaxed">
+                      将今日新词分为小循环组：每组依次完成第1、2、3轮直至全员攻克，再学下一组。全组学完后自动合并开启多轮终极复习！
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next: GroupConfig = { mode: 'bySize', value: 33 };
+                          setGroupConfig(next);
+                          sessionManager.saveGroupPref(next);
+                        }}
+                        className={`p-2 rounded-lg border text-left transition ${
+                          groupConfig.mode === 'bySize'
+                            ? 'bg-amber-50 border-amber-300 text-amber-950 font-bold'
+                            : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                        }`}
+                      >
+                        <div className="font-bold">按每组词数</div>
+                        <div className="text-[10px] text-stone-400 mt-0.5">推荐 25 ~ 33 词一组</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next: GroupConfig = { mode: 'byCount', value: 5 };
+                          setGroupConfig(next);
+                          sessionManager.saveGroupPref(next);
+                        }}
+                        className={`p-2 rounded-lg border text-left transition ${
+                          groupConfig.mode === 'byCount'
+                            ? 'bg-amber-50 border-amber-300 text-amber-950 font-bold'
+                            : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                        }`}
+                      >
+                        <div className="font-bold">按固定组数</div>
+                        <div className="text-[10px] text-stone-400 mt-0.5">平分 3 ~ 5 个小组</div>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap pt-1">
+                      {groupConfig.mode === 'bySize'
+                        ? [20, 25, 33, 50].map((size) => (
+                            <button
+                              key={size}
+                              type="button"
+                              onClick={() => {
+                                const next: GroupConfig = { mode: 'bySize', value: size };
+                                setGroupConfig(next);
+                                sessionManager.saveGroupPref(next);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium border transition cursor-pointer ${
+                                groupConfig.value === size
+                                  ? 'bg-amber-700 border-amber-800 text-white shadow-xs'
+                                  : 'bg-stone-100 border-stone-200 text-stone-700 hover:bg-stone-200'
+                              }`}
+                            >
+                              {size} 词/组
+                            </button>
+                          ))
+                        : [2, 3, 4, 5].map((cnt) => (
+                            <button
+                              key={cnt}
+                              type="button"
+                              onClick={() => {
+                                const next: GroupConfig = { mode: 'byCount', value: cnt };
+                                setGroupConfig(next);
+                                sessionManager.saveGroupPref(next);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium border transition cursor-pointer ${
+                                groupConfig.value === cnt
+                                  ? 'bg-amber-700 border-amber-800 text-white shadow-xs'
+                                  : 'bg-stone-100 border-stone-200 text-stone-700 hover:bg-stone-200'
+                              }`}
+                            >
+                              平分 {cnt} 组
+                            </button>
+                          ))}
                     </div>
                   </div>
 

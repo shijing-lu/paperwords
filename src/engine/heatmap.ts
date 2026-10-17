@@ -28,15 +28,15 @@ export function isSameDay(timestamp: number, baseDate: Date = new Date()): boole
  */
 export function getWordDisplayEncounters(word: WordItem): number {
   if (!word.stats) {
-    // 兼容老数据：如果 reviewState 已有 lastRating 或 repetition，至少算作学习过
-    if (word.reviewState.lastRating) return 1;
+    // 兼容老数据：仅在老数据曾标记为模糊 (2) 或 生疏 (3) 时算 1 次难词
+    if (word.reviewState.lastRating === 2 || word.reviewState.lastRating === 3) return 1;
     return 0;
   }
 
   const { todayEncounters = 0, totalEncounters = 0, lastStudiedDate } = word.stats;
 
   if (lastStudiedDate && isSameDay(lastStudiedDate)) {
-    return Math.max(todayEncounters, 1);
+    return todayEncounters;
   }
 
   return totalEncounters;
@@ -139,9 +139,12 @@ export function recordWordEncounter(
   // 保留最近 50 条打标流水
   const updatedHistory = [...prevHistory.slice(-49), newLog];
 
+  // 用户规则：点击“熟悉”(1)不计入，只有点击“模糊”(2)和“生疏”(3)才会算次数
+  const shouldCount = rating === 2 || rating === 3;
+
   return {
-    totalEncounters: (currentStats?.totalEncounters || 0) + 1,
-    todayEncounters: prevToday + 1,
+    totalEncounters: (currentStats?.totalEncounters || 0) + (shouldCount ? 1 : 0),
+    todayEncounters: prevToday + (shouldCount ? 1 : 0),
     lastStudiedDate: now,
     firstStudiedDate: currentStats?.firstStudiedDate || now,
     studyHistory: updatedHistory,

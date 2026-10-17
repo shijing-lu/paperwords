@@ -58,10 +58,10 @@ export const StatsModal: React.FC<StatsModalProps> = ({
   // 2. 核心量化指标计算 (KPIs)
   const totalTodayWords = todayWords.length;
 
-  // 今日总点击/打标频次
+  // 今日总生疏/模糊攻坚频次
   const totalTodayEncounters = useMemo(() => {
     return todayWords.reduce((sum, w) => {
-      const enc = w.stats?.todayEncounters || 1;
+      const enc = w.stats?.todayEncounters || 0;
       return sum + enc;
     }, 0);
   }, [todayWords]);
@@ -90,7 +90,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({
     };
 
     for (const w of todayWords) {
-      const enc = w.stats?.todayEncounters || 1;
+      const enc = w.stats?.todayEncounters || 0;
       if (enc <= 1) buckets.level1++;
       else if (enc === 2) buckets.level2++;
       else if (enc <= 4) buckets.level3++;
@@ -128,8 +128,8 @@ export const StatsModal: React.FC<StatsModalProps> = ({
 
     // 排序
     result.sort((a, b) => {
-      const encA = a.stats?.todayEncounters || 1;
-      const encB = b.stats?.todayEncounters || 1;
+      const encA = a.stats?.todayEncounters || 0;
+      const encB = b.stats?.todayEncounters || 0;
 
       if (sort === 'encounters-desc') {
         if (encB !== encA) return encB - encA;
@@ -157,7 +157,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({
     const text = hardcoreWords
       .map(
         (w, i) =>
-          `${i + 1}. ${w.word} (${w.stats?.todayEncounters || 1}次) - ${w.definition}`
+          `${i + 1}. ${w.word} (${w.stats?.todayEncounters || 0}次) - ${w.definition}`
       )
       .join('\n');
     navigator.clipboard.writeText(text);
